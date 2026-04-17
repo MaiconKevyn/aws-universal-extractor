@@ -1,0 +1,2 @@
+"""Submit extraction Lambda."""
+

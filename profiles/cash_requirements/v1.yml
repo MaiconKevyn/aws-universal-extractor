@@ -1,0 +1,67 @@
+id: cash_requirements
+version: v1
+description: Extract structured data from cash requirements PDF documents.
+
+document:
+  type: pdf
+  extraction_strategy: pymupdf_text
+
+prompt:
+  system: |
+    You are a structured document extraction assistant.
+    Extract the requested fields from the provided PDF text.
+    Return only data that conforms to the supplied JSON schema.
+    If a field is not present in the document, return null for optional fields.
+  user_template: |
+    Client ID: {{client_id}}
+    Document ID: {{document_id}}
+    Metadata: {{metadata_json}}
+
+    Document text:
+    {{document_text}}
+
+schema:
+  type: object
+  additionalProperties: false
+  required:
+    - document_title
+    - currency
+    - total_cash_required
+    - reference_date
+    - line_items
+  properties:
+    document_title:
+      type: string
+    currency:
+      type:
+        - string
+        - "null"
+    total_cash_required:
+      type:
+        - number
+        - "null"
+    reference_date:
+      type:
+        - string
+        - "null"
+    line_items:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - description
+          - amount
+        properties:
+          description:
+            type: string
+          amount:
+            type:
+              - number
+              - "null"
+
+validation:
+  strict_schema: true
+  required_non_empty_fields:
+    - document_title
+

@@ -1,0 +1,2 @@
+"""Extract PDF text Lambda."""
+

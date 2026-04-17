@@ -1,0 +1,2 @@
+"""Fetch document Lambda."""
+

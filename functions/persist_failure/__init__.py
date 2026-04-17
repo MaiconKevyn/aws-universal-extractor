@@ -1,0 +1,2 @@
+"""Persist failure Lambda."""
+

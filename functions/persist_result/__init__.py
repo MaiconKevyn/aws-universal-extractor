@@ -1,0 +1,2 @@
+"""Persist result Lambda."""
+

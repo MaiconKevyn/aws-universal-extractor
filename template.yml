@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Async PDF extraction pipeline with Step Functions, Lambda, S3 and OpenAI.
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+  OpenAIApiKeySecretArn:
+    Type: String
+  OpenAIModel:
+    Type: String
+    Default: gpt-4.1-mini
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures:
+      - x86_64
+    MemorySize: 512
+    Timeout: 30
+    CodeUri: .
+    Layers:
+      - !Ref CommonLayer
+    Environment:
+      Variables:
+        STAGE_NAME: !Ref StageName
+        DOCUMENTS_BUCKET_NAME: !Ref DocumentsBucket
+        OPENAI_API_KEY_SECRET_ARN: !Ref OpenAIApiKeySecretArn
+        OPENAI_MODEL: !Ref OpenAIModel
+        PROFILES_ROOT: /var/task/profiles
+
+Resources:
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-${AWS::AccountId}-${AWS::Region}-documents"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  ExtractionApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-common"
+      ContentUri: layers/common
+      CompatibleRuntimes:
+        - python3.13
+      RetentionPolicy: Delete
+
+  SubmitExtractionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.submit_extraction.app.lambda_handler
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref DocumentExtractionStateMachine
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource: !Ref DocumentExtractionStateMachine
+      Events:
+        SubmitExtraction:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ExtractionApi
+            Path: /extractions
+            Method: post
+
+  FetchDocumentFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.fetch_document.app.lambda_handler
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DocumentsBucket
+
+  ExtractPdfTextFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.extract_pdf_text.app.lambda_handler
+      Timeout: 120
+      MemorySize: 1024
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DocumentsBucket
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
+
+  LoadExtractionProfileFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.load_extraction_profile.app.lambda_handler
+
+  RunLlmExtractionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.run_llm_extraction.app.lambda_handler
+      Timeout: 120
+      MemorySize: 1024
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DocumentsBucket
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref OpenAIApiKeySecretArn
+
+  ValidateSchemaFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.validate_schema.app.lambda_handler
+
+  PersistResultFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.persist_result.app.lambda_handler
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
+
+  PersistFailureFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.persist_failure.app.lambda_handler
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
+
+  DocumentExtractionStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-document-extraction"
+      Type: STANDARD
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref FetchDocumentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ExtractPdfTextFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref LoadExtractionProfileFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RunLlmExtractionFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ValidateSchemaFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref PersistResultFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref PersistFailureFunction
+      Definition:
+        Comment: Async PDF extraction pipeline
+        StartAt: FetchDocument
+        States:
+          FetchDocument:
+            Type: Task
+            Resource: !GetAtt FetchDocumentFunction.Arn
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: ExtractPdfText
+          ExtractPdfText:
+            Type: Task
+            Resource: !GetAtt ExtractPdfTextFunction.Arn
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                IntervalSeconds: 2
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: LoadExtractionProfile
+          LoadExtractionProfile:
+            Type: Task
+            Resource: !GetAtt LoadExtractionProfileFunction.Arn
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: RunLlmExtraction
+          RunLlmExtraction:
+            Type: Task
+            Resource: !GetAtt RunLlmExtractionFunction.Arn
+            Retry:
+              - ErrorEquals:
+                  - States.ALL
+                IntervalSeconds: 3
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: ValidateSchema
+          ValidateSchema:
+            Type: Task
+            Resource: !GetAtt ValidateSchemaFunction.Arn
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: PersistResult
+          PersistResult:
+            Type: Task
+            Resource: !GetAtt PersistResultFunction.Arn
+            End: true
+          PersistFailure:
+            Type: Task
+            Resource: !GetAtt PersistFailureFunction.Arn
+            End: true
+
+Outputs:
+  ExtractionApiUrl:
+    Description: Extraction API endpoint
+    Value: !Sub "https://${ExtractionApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/extractions"
+  StateMachineArn:
+    Description: Document extraction state machine ARN
+    Value: !Ref DocumentExtractionStateMachine
+  DocumentsBucketName:
+    Description: Bucket created for source PDFs and extraction artifacts
+    Value: !Ref DocumentsBucket

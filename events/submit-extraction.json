@@ -1,0 +1,17 @@
+{
+  "document": {
+    "bucket": "documents-prod",
+    "key": "clients/acme/inbox/2026/04/cash_requirements.pdf"
+  },
+  "extraction_profile": {
+    "id": "cash_requirements",
+    "version": "v1"
+  },
+  "client_id": "acme",
+  "document_id": "cash_requirements_2026_04",
+  "idempotency_key": "acme-cash-requirements-v1",
+  "metadata": {
+    "source_system": "portal"
+  }
+}
+

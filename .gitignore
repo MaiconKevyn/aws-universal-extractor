@@ -1,0 +1,12 @@
+.aws-sam/
+.pytest_cache/
+__pycache__/
+*.pyc
+.venv/
+.env
+.env/
+.idea/
+universal-extractor-jenkins/
+.codex
+img*
+tests/

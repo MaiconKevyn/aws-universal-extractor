@@ -1,0 +1,2 @@
+"""Load extraction profile Lambda."""
+
