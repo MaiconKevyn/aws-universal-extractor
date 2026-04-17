@@ -91,24 +91,39 @@ pipeline {
                 sh '''
                     set -eux
 
-                    if [ -z "$OPENAI_API_KEY_SECRET_ARN" ]; then
+                    stack_name="${STACK_NAME:-universal-extractor-dev}"
+                    deploy_stage="${APP_STAGE:-${STAGE_NAME:-dev}}"
+                    openai_model="${OPENAI_MODEL:-gpt-4.1-mini}"
+                    openai_secret_arn="${OPENAI_API_KEY_SECRET_ARN:-}"
+                    sam_s3_bucket="${SAM_S3_BUCKET:-}"
+
+                    if [ -z "$openai_secret_arn" ]; then
                       echo "OPENAI_API_KEY_SECRET_ARN is required for deploy."
                       exit 1
                     fi
 
+                    case "$openai_secret_arn" in
+                      arn:aws:secretsmanager:*)
+                        ;;
+                      *)
+                        echo "OPENAI_API_KEY_SECRET_ARN must be a valid Secrets Manager ARN."
+                        exit 1
+                        ;;
+                    esac
+
                     set -- ./.venv/bin/sam deploy \
                       --template-file .aws-sam/build/template.yaml \
-                      --stack-name "$STACK_NAME" \
+                      --stack-name "$stack_name" \
                       --region "$AWS_DEFAULT_REGION" \
                       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
                       --no-fail-on-empty-changeset \
                       --parameter-overrides \
-                        StageName="$APP_STAGE" \
-                        OpenAIApiKeySecretArn="$OPENAI_API_KEY_SECRET_ARN" \
-                        OpenAIModel="$OPENAI_MODEL"
+                        StageName="$deploy_stage" \
+                        OpenAIApiKeySecretArn="$openai_secret_arn" \
+                        OpenAIModel="$openai_model"
 
-                    if [ -n "${SAM_S3_BUCKET:-}" ]; then
-                      set -- "$@" --s3-bucket "$SAM_S3_BUCKET"
+                    if [ -n "$sam_s3_bucket" ]; then
+                      set -- "$@" --s3-bucket "$sam_s3_bucket"
                     else
                       set -- "$@" --resolve-s3
                     fi
