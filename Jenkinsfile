@@ -8,7 +8,7 @@ pipeline {
     parameters {
         string(name: 'AWS_REGION', defaultValue: 'sa-east-1', description: 'AWS region for the deployment')
         string(name: 'STACK_NAME', defaultValue: 'universal-extractor-dev', description: 'CloudFormation stack name')
-        string(name: 'STAGE_NAME', defaultValue: 'dev', description: 'Template parameter StageName')
+        string(name: 'APP_STAGE', defaultValue: 'dev', description: 'Template parameter StageName')
         string(name: 'OPENAI_API_KEY_SECRET_ARN', defaultValue: '', description: 'Secrets Manager ARN containing the OpenAI API key')
         string(name: 'OPENAI_MODEL', defaultValue: 'gpt-4.1-mini', description: 'Template parameter OpenAIModel')
         string(name: 'SAM_S3_BUCKET', defaultValue: '', description: 'Optional S3 bucket for SAM artifacts. Leave blank to use --resolve-s3')
@@ -103,11 +103,11 @@ pipeline {
                       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
                       --no-fail-on-empty-changeset \
                       --parameter-overrides \
-                        StageName="$STAGE_NAME" \
+                        StageName="$APP_STAGE" \
                         OpenAIApiKeySecretArn="$OPENAI_API_KEY_SECRET_ARN" \
                         OpenAIModel="$OPENAI_MODEL"
 
-                    if [ -n "$SAM_S3_BUCKET" ]; then
+                    if [ -n "${SAM_S3_BUCKET:-}" ]; then
                       set -- "$@" --s3-bucket "$SAM_S3_BUCKET"
                     else
                       set -- "$@" --resolve-s3
