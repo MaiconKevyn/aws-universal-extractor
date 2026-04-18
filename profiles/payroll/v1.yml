@@ -1,0 +1,245 @@
+id: payroll
+version: v1
+description: Extract structured data from US payroll (pay stub / earnings statement) PDF documents.
+
+document:
+  type: pdf
+  extraction_strategy: pymupdf_text
+
+prompt:
+  system: |
+    You are a structured document extraction assistant specialized in US payroll documents (pay stubs / earnings statements).
+    Extract the requested fields from the provided PDF text exactly as they appear.
+
+    Number formatting: US numbers use "," as thousand separator and "." as decimal separator. Convert to plain decimal (e.g. "1,234.56" -> 1234.56, "$2,107.19" -> 2107.19). Return amounts as numbers, never strings. Strip currency symbols.
+
+    Date formatting: Always return ISO format YYYY-MM-DD. Convert from any US format like "MM/DD/YYYY" or "November 13, 2025".
+
+    Nullability: If a field is not present in the document, return null. Never invent values.
+
+    Line-item classification: Every row in the earnings/deductions tables must be classified as exactly one of:
+      - "earning": Regular Pay, Overtime, Holiday Pay, PTO / Vacation, Bonus, Commission, Reimbursement, Shift Differential.
+      - "deduction": Federal Income Tax (FIT), Social Security Tax (FICA-SS), Medicare Tax (FICA-MED), State Income Tax (SIT), Local Tax, 401(k), Roth 401(k), Health Insurance, Dental, Vision, HSA, FSA, Garnishment.
+
+    YTD columns: Many pay stubs show a "Current" and a "Year-to-Date (YTD)" column side by side. Extract both when present; put YTD values in `ytd_*` fields and per-item `ytd_amount`. If only Current is shown, leave YTD fields null.
+  user_template: |
+    Client ID: {{client_id}}
+    Document ID: {{document_id}}
+    Metadata: {{metadata_json}}
+
+    Document text:
+    {{document_text}}
+
+schema:
+  type: object
+  additionalProperties: false
+  description: A single US payroll pay stub / earnings statement.
+  required:
+    - employer
+    - employee
+    - pay_period
+    - currency
+    - totals
+    - line_items
+  properties:
+    employer:
+      type: object
+      additionalProperties: false
+      description: The company issuing the pay stub.
+      required:
+        - name
+        - ein
+        - address
+      properties:
+        name:
+          type: string
+          description: Legal name of the employer as printed on the stub (e.g. "Acme Corp", "Rodriguez, Figueroa and Sanchez").
+        ein:
+          type:
+            - string
+            - "null"
+          description: Employer Identification Number, formatted NN-NNNNNNN (e.g. "14-1499914"). Null if not present.
+        address:
+          type:
+            - string
+            - "null"
+          description: Full mailing address of the employer, single-line with street, city, state, ZIP. Null if not present.
+    employee:
+      type: object
+      additionalProperties: false
+      description: The individual being paid.
+      required:
+        - name
+        - employee_id
+        - ssn_last4
+        - job_title
+        - hire_date
+        - pay_rate
+        - pay_frequency
+      properties:
+        name:
+          type: string
+          description: Full legal name of the employee as printed (e.g. "Brian Yang").
+        employee_id:
+          type:
+            - string
+            - "null"
+          description: Internal employee number / payroll ID shown on the stub. Null if not present.
+        ssn_last4:
+          type:
+            - string
+            - "null"
+          description: Last 4 digits of the Social Security Number, extracted from the masked display (e.g. from "XXX-XX-3615" return "3615"). Null if not shown.
+        job_title:
+          type:
+            - string
+            - "null"
+          description: Job title / position of the employee (e.g. "Software Engineer", "Financial Analyst"). Null if not present.
+        hire_date:
+          type:
+            - string
+            - "null"
+          description: Employment start date in ISO format YYYY-MM-DD. Null if not shown.
+        pay_rate:
+          type:
+            - number
+            - "null"
+          description: The base pay rate printed on the stub. Hourly rate for hourly employees (e.g. 33.68) OR annual salary for salaried employees (e.g. 95000.00). Do not annualize / convert between the two. Null if not shown.
+        pay_frequency:
+          type:
+            - string
+            - "null"
+          description: How often the employee is paid. "weekly" = 52/year, "biweekly" = 26/year, "semimonthly" = 24/year, "monthly" = 12/year. Normalize case to lowercase.
+          enum:
+            - weekly
+            - biweekly
+            - semimonthly
+            - monthly
+            - null
+    pay_period:
+      type: object
+      additionalProperties: false
+      description: The time range this pay stub covers and when it was paid.
+      required:
+        - start_date
+        - end_date
+        - pay_date
+      properties:
+        start_date:
+          type:
+            - string
+            - "null"
+          description: First day of the pay period, ISO YYYY-MM-DD. Null if not present.
+        end_date:
+          type:
+            - string
+            - "null"
+          description: Last day of the pay period, ISO YYYY-MM-DD. Null if not present.
+        pay_date:
+          type:
+            - string
+            - "null"
+          description: Date the payment was issued to the employee, ISO YYYY-MM-DD. Often labeled "Pay Date" or "Check Date". Null if not present.
+    currency:
+      type:
+        - string
+        - "null"
+      description: ISO 4217 currency code. Default "USD" for US pay stubs unless explicitly stated otherwise.
+    totals:
+      type: object
+      additionalProperties: false
+      description: Aggregated amounts for the current period and year-to-date.
+      required:
+        - gross_pay
+        - total_taxes
+        - total_deductions
+        - net_pay
+        - ytd_gross_pay
+        - ytd_net_pay
+      properties:
+        gross_pay:
+          type:
+            - number
+            - "null"
+          description: Sum of all earnings before any deductions, for the current pay period. Equals the "Gross Pay" or "Total Earnings" line.
+        total_taxes:
+          type:
+            - number
+            - "null"
+          description: Sum of tax deductions only (Federal, State, Social Security, Medicare, Local) for the current period. Exclude benefits like 401k or Health Insurance. Null if the stub does not aggregate taxes separately.
+        total_deductions:
+          type:
+            - number
+            - "null"
+          description: Sum of ALL deductions (taxes + benefits + other) for the current period. Equals the "Total Deductions" line if present.
+        net_pay:
+          type:
+            - number
+            - "null"
+          description: Take-home pay for the current period. Equals gross_pay - total_deductions. Labeled "Net Pay", "Take Home", or "LÍQUIDO"/"NET PAY" on the stub.
+        ytd_gross_pay:
+          type:
+            - number
+            - "null"
+          description: Year-to-date gross pay across all prior periods including this one. From the YTD column of the gross/totals row. Null if no YTD column is shown.
+        ytd_net_pay:
+          type:
+            - number
+            - "null"
+          description: Year-to-date net pay. Null if the stub does not show a YTD net pay total (common — do not compute if not shown).
+    line_items:
+      type: array
+      description: Every row from the earnings and deductions tables, in the order they appear on the stub. Do not include aggregate/total rows (those go in `totals`).
+      items:
+        type: object
+        additionalProperties: false
+        description: A single line item from an earnings or deductions table.
+        required:
+          - code
+          - description
+          - kind
+          - hours
+          - rate
+          - amount
+          - ytd_amount
+        properties:
+          code:
+            type:
+              - string
+              - "null"
+            description: Short code printed in the Code column (e.g. "REG", "OT", "FIT", "401K"). Null if the stub has no code column.
+          description:
+            type: string
+            description: Human-readable label of the line item exactly as printed (e.g. "Regular Pay", "Federal Income Tax", "401(k) Contribution").
+          kind:
+            type: string
+            description: Classification of the line item — see system prompt for the taxonomy.
+            enum:
+              - earning
+              - deduction
+          hours:
+            type:
+              - number
+              - "null"
+            description: Number of hours shown on this row, if applicable (earnings rows only, typically). Null for deductions and for rows without an hours column.
+          rate:
+            type:
+              - number
+              - "null"
+            description: Per-unit rate shown on this row (typically hourly rate for earnings). Null when not applicable.
+          amount:
+            type:
+              - number
+              - "null"
+            description: Amount for the CURRENT period in this row (from the "Current" column). Always positive — the `kind` field conveys the sign.
+          ytd_amount:
+            type:
+              - number
+              - "null"
+            description: Year-to-date amount for this line item (from the YTD column). Null if no YTD column is shown.
+
+validation:
+  strict_schema: true
+  required_non_empty_fields:
+    - employer.name
+    - employee.name
