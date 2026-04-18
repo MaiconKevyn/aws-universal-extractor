@@ -9,10 +9,12 @@ pipeline {
         string(name: 'AWS_REGION', defaultValue: 'sa-east-1', description: 'AWS region for the deployment')
         string(name: 'STACK_NAME', defaultValue: 'universal-extractor-dev', description: 'CloudFormation stack name')
         string(name: 'APP_STAGE', defaultValue: 'dev', description: 'Template parameter StageName')
+        string(name: 'DOCUMENTS_BUCKET_NAME', defaultValue: '', description: 'Optional documents bucket name. Leave blank to use payroll-<stage>-<account>-<region>')
         string(name: 'OPENAI_API_KEY_SECRET_ARN', defaultValue: '', description: 'Secrets Manager ARN containing the OpenAI API key')
         string(name: 'OPENAI_MODEL', defaultValue: 'gpt-4.1-mini', description: 'Template parameter OpenAIModel')
         string(name: 'SAM_S3_BUCKET', defaultValue: '', description: 'Optional S3 bucket for SAM artifacts. Leave blank to use --resolve-s3')
         booleanParam(name: 'DEPLOY_ENABLED', defaultValue: true, description: 'If disabled, the job stops after validate/build')
+        booleanParam(name: 'SYNC_PAYROLL_FIXTURES', defaultValue: true, description: 'Upload tests/fixtures/payrolls/*.pdf to the deployed documents bucket after deploy')
     }
 
     environment {
@@ -93,6 +95,7 @@ pipeline {
 
                     stack_name="${STACK_NAME:-universal-extractor-dev}"
                     deploy_stage="${APP_STAGE:-${STAGE_NAME:-dev}}"
+                    documents_bucket_name="${DOCUMENTS_BUCKET_NAME:-}"
                     openai_model="${OPENAI_MODEL:-gpt-4.1-mini}"
                     openai_secret_arn="${OPENAI_API_KEY_SECRET_ARN:-}"
                     sam_s3_bucket="${SAM_S3_BUCKET:-}"
@@ -119,6 +122,7 @@ pipeline {
                       --no-fail-on-empty-changeset \
                       --parameter-overrides \
                         StageName="$deploy_stage" \
+                        DocumentsBucketName="$documents_bucket_name" \
                         OpenAIApiKeySecretArn="$openai_secret_arn" \
                         OpenAIModel="$openai_model"
 
@@ -129,6 +133,37 @@ pipeline {
                     fi
 
                     "$@"
+                '''
+            }
+        }
+
+        stage('Sync Payroll Fixtures') {
+            when {
+                allOf {
+                    expression { params.DEPLOY_ENABLED }
+                    expression { params.SYNC_PAYROLL_FIXTURES == null || params.SYNC_PAYROLL_FIXTURES }
+                }
+            }
+            steps {
+                sh '''
+                    set -eux
+
+                    stack_name="${STACK_NAME:-universal-extractor-dev}"
+                    bucket_name="$(./.venv/bin/aws cloudformation describe-stacks \
+                      --stack-name "$stack_name" \
+                      --region "$AWS_DEFAULT_REGION" \
+                      --query "Stacks[0].Outputs[?OutputKey=='DocumentsBucketName'].OutputValue | [0]" \
+                      --output text)"
+
+                    if [ -z "$bucket_name" ] || [ "$bucket_name" = "None" ]; then
+                      echo "Could not resolve DocumentsBucketName from CloudFormation outputs."
+                      exit 1
+                    fi
+
+                    ./.venv/bin/aws s3 sync tests/fixtures/payrolls "s3://$bucket_name/tests/fixtures/payrolls/" \
+                      --region "$AWS_DEFAULT_REGION" \
+                      --exclude "*" \
+                      --include "*.pdf"
                 '''
             }
         }

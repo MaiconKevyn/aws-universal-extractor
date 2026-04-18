@@ -6,11 +6,18 @@ Parameters:
   StageName:
     Type: String
     Default: dev
+  DocumentsBucketName:
+    Type: String
+    Default: ""
+    Description: Optional S3 bucket name for source documents and extraction artifacts. Leave blank to use payroll-<stage>-<account>-<region>.
   OpenAIApiKeySecretArn:
     Type: String
   OpenAIModel:
     Type: String
     Default: gpt-4.1-mini
+
+Conditions:
+  HasCustomDocumentsBucketName: !Not [!Equals [!Ref DocumentsBucketName, ""]]
 
 Globals:
   Function:
@@ -33,8 +40,13 @@ Globals:
 Resources:
   DocumentsBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub "${AWS::StackName}-${AWS::AccountId}-${AWS::Region}-documents"
+      BucketName: !If
+        - HasCustomDocumentsBucketName
+        - !Ref DocumentsBucketName
+        - !Sub "payroll-${StageName}-${AWS::AccountId}-${AWS::Region}"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -271,5 +283,8 @@ Outputs:
     Description: Document extraction state machine ARN
     Value: !Ref DocumentExtractionStateMachine
   DocumentsBucketName:
-    Description: Bucket created for source PDFs and extraction artifacts
+    Description: Bucket created for source documents and extraction artifacts
     Value: !Ref DocumentsBucket
+  PayrollFixturesPrefix:
+    Description: S3 prefix used by Jenkins to upload payroll PDF fixtures
+    Value: tests/fixtures/payrolls/

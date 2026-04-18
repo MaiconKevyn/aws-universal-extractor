@@ -1,17 +1,16 @@
 {
   "document": {
-    "bucket": "documents-prod",
-    "key": "clients/acme/inbox/2026/04/cash_requirements.pdf"
+    "bucket": "payroll-dev-498504717701-sa-east-1",
+    "key": "tests/fixtures/payrolls/paystub_001_canonical.pdf"
   },
   "extraction_profile": {
-    "id": "cash_requirements",
+    "id": "payroll",
     "version": "v1"
   },
-  "client_id": "acme",
-  "document_id": "cash_requirements_2026_04",
-  "idempotency_key": "acme-cash-requirements-v1",
+  "client_id": "internal",
+  "document_id": "paystub_001_canonical",
+  "idempotency_key": "internal-paystub-001-payroll-v1",
   "metadata": {
-    "source_system": "portal"
+    "source_system": "jenkins_fixture"
   }
 }
-

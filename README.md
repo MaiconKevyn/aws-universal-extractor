@@ -1,6 +1,6 @@
 # Universal Extractor
 
-Pipeline assíncrona em AWS para extração estruturada de documentos PDF usando Step Functions, Lambda, S3 e OpenAI.
+Pipeline assíncrona em AWS para extração estruturada de documentos usando Step Functions, Lambda, S3 e OpenAI.
 
 ## MVP
 
@@ -10,23 +10,47 @@ Pipeline assíncrona em AWS para extração estruturada de documentos PDF usando
 - Perfil de extração versionado em YAML
 - Saída persistida no mesmo diretório do documento em `extract/<profile>/<version>/<request_id>/`
 
+## Bucket de documentos
+
+O bucket padrão criado pelo `template.yml` segue este padrão:
+
+```text
+payroll-<stage>-<account-id>-<region>
+```
+
+No ambiente `dev` atual, isso fica:
+
+```text
+payroll-dev-498504717701-sa-east-1
+```
+
+Observação: `Payroll/` não é um nome válido de bucket S3. Em S3, `Payroll/` seria um prefixo/pasta. Bucket precisa ser minúsculo, sem `/`, e globalmente único.
+
+Os PDFs de payroll usados como fixture ficam no prefixo:
+
+```text
+s3://<documents-bucket>/tests/fixtures/payrolls/
+```
+
+O Jenkinsfile sincroniza automaticamente os PDFs locais de `tests/fixtures/payrolls/*.pdf` para esse prefixo após o deploy, quando `SYNC_PAYROLL_FIXTURES=true`.
+
 ## Payload de entrada
 
 ```json
 {
   "document": {
-    "bucket": "documents-prod",
-    "key": "clients/acme/inbox/2026/04/cash_requirements.pdf"
+    "bucket": "payroll-dev-498504717701-sa-east-1",
+    "key": "tests/fixtures/payrolls/paystub_001_canonical.pdf"
   },
   "extraction_profile": {
-    "id": "cash_requirements",
+    "id": "payroll",
     "version": "v1"
   },
-  "client_id": "acme",
-  "document_id": "cash_requirements_2026_04",
-  "idempotency_key": "acme-cash-requirements-v1",
+  "client_id": "internal",
+  "document_id": "paystub_001_canonical",
+  "idempotency_key": "internal-paystub-001-payroll-v1",
   "metadata": {
-    "source_system": "portal"
+    "source_system": "jenkins_fixture"
   }
 }
 ```
@@ -62,6 +86,8 @@ functions/
 profiles/
   cash_requirements/
     v1.yml
+  payroll/
+    v1.yml
 events/
   submit-extraction.json
 tests/
@@ -69,7 +95,7 @@ tests/
 
 ## Perfil de extração
 
-Cada perfil é versionado em um arquivo YAML, por exemplo `profiles/cash_requirements/v1.yml`.
+Cada perfil é versionado em um arquivo YAML, por exemplo `profiles/payroll/v1.yml`.
 
 O arquivo concentra:
 
@@ -100,6 +126,13 @@ sam build
 sam deploy --guided
 ```
 
+Parâmetros relevantes:
+
+- `StageName`: ambiente, por exemplo `dev`
+- `DocumentsBucketName`: opcional; se vazio, usa `payroll-<stage>-<account-id>-<region>`
+- `OpenAIApiKeySecretArn`: ARN do secret da OpenAI no Secrets Manager
+- `OpenAIModel`: modelo usado na extração
+
 ## Variáveis de ambiente esperadas
 
 - `DOCUMENTS_BUCKET_NAME`
@@ -108,9 +141,3 @@ sam deploy --guided
 - `OPENAI_MODEL`
 - `STATE_MACHINE_ARN`
 - `PROFILES_ROOT` opcional
-
-## Observações
-
-- O runtime alvo está configurado como Python 3.13
-- O `sam` ainda não está instalado nesta máquina
-- A integração OpenAI foi scaffoldada usando Responses API + Structured Outputs
