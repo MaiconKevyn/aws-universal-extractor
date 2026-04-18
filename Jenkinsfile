@@ -122,9 +122,12 @@ pipeline {
                       --no-fail-on-empty-changeset \
                       --parameter-overrides \
                         StageName="$deploy_stage" \
-                        DocumentsBucketName="$documents_bucket_name" \
                         OpenAIApiKeySecretArn="$openai_secret_arn" \
                         OpenAIModel="$openai_model"
+
+                    if [ -n "$documents_bucket_name" ]; then
+                      set -- "$@" DocumentsBucketName="$documents_bucket_name"
+                    fi
 
                     if [ -n "$sam_s3_bucket" ]; then
                       set -- "$@" --s3-bucket "$sam_s3_bucket"
