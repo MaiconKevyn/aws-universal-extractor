@@ -1,0 +1,122 @@
+{
+  "employer": {
+    "name": "Henderson, Ramirez and Lewis",
+    "ein": "43-1728977",
+    "address": "161 Calderon River Suite 931, Lake Jeremyport, CO 31013"
+  },
+  "employee": {
+    "name": "Ashley James",
+    "employee_id": "879693",
+    "ssn_last4": "2654",
+    "job_title": "Systems Analyst",
+    "hire_date": "2019-11-18",
+    "pay_rate": 55844.84,
+    "pay_frequency": "semimonthly"
+  },
+  "pay_period": {
+    "start_date": "2025-08-06",
+    "end_date": "2025-08-20",
+    "pay_date": "2025-08-26"
+  },
+  "currency": "USD",
+  "totals": {
+    "gross_pay": 2782.62,
+    "total_taxes": 687.98,
+    "total_deductions": 1148.8,
+    "net_pay": 1633.82,
+    "ytd_gross_pay": 31890.82,
+    "ytd_net_pay": 16956.42
+  },
+  "line_items": [
+    {
+      "code": "REG",
+      "description": "Regular Pay",
+      "kind": "earning",
+      "hours": null,
+      "rate": null,
+      "amount": 2326.87,
+      "ytd_amount": 30249.31
+    },
+    {
+      "code": "OT",
+      "description": "Overtime",
+      "kind": "earning",
+      "hours": 5.61,
+      "rate": 40.27,
+      "amount": 225.91,
+      "ytd_amount": 1164.15
+    },
+    {
+      "code": "PTO",
+      "description": "Paid Time Off",
+      "kind": "earning",
+      "hours": 8.56,
+      "rate": 26.85,
+      "amount": 229.84,
+      "ytd_amount": 477.36
+    },
+    {
+      "code": "FIT",
+      "description": "Federal Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 354.83,
+      "ytd_amount": 4612.79
+    },
+    {
+      "code": "SS",
+      "description": "Social Security Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 172.52,
+      "ytd_amount": 2242.76
+    },
+    {
+      "code": "MED",
+      "description": "Medicare Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 40.35,
+      "ytd_amount": 524.55
+    },
+    {
+      "code": "SIT",
+      "description": "State Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 120.28,
+      "ytd_amount": 1563.64
+    },
+    {
+      "code": "401K",
+      "description": "401(k) Contribution",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 222.61,
+      "ytd_amount": 2893.93
+    },
+    {
+      "code": "HLTH",
+      "description": "Health Insurance",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 215.3,
+      "ytd_amount": 2798.9
+    },
+    {
+      "code": "DENT",
+      "description": "Dental Insurance",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 22.91,
+      "ytd_amount": 297.83
+    }
+  ]
+}

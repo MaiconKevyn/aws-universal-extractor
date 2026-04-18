@@ -1,0 +1,86 @@
+{
+  "employer": {
+    "name": "Trujillo Group",
+    "ein": "93-9375710",
+    "address": "724 John Points Suite 969, Coxberg, NY 65187"
+  },
+  "employee": {
+    "name": "Daniel Hahn",
+    "employee_id": "340776",
+    "ssn_last4": "2489",
+    "job_title": "Financial Analyst",
+    "hire_date": "2025-01-20",
+    "pay_rate": 77248.02,
+    "pay_frequency": "weekly"
+  },
+  "pay_period": {
+    "start_date": "2025-08-04",
+    "end_date": "2025-08-10",
+    "pay_date": "2025-08-14"
+  },
+  "currency": "USD",
+  "totals": {
+    "gross_pay": 1485.54,
+    "total_taxes": 423.8,
+    "total_deductions": 432.67,
+    "net_pay": 1052.87,
+    "ytd_gross_pay": 47537.28,
+    "ytd_net_pay": 33691.84
+  },
+  "line_items": [
+    {
+      "code": "REG",
+      "description": "Regular Pay",
+      "kind": "earning",
+      "hours": null,
+      "rate": null,
+      "amount": 1485.54,
+      "ytd_amount": 47537.28
+    },
+    {
+      "code": "FIT",
+      "description": "Federal Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 214.74,
+      "ytd_amount": 6871.68
+    },
+    {
+      "code": "SS",
+      "description": "Social Security Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 92.1,
+      "ytd_amount": 2947.2
+    },
+    {
+      "code": "MED",
+      "description": "Medicare Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 21.54,
+      "ytd_amount": 689.28
+    },
+    {
+      "code": "SIT",
+      "description": "State Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 95.42,
+      "ytd_amount": 3053.44
+    },
+    {
+      "code": "DENT",
+      "description": "Dental Insurance",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 8.87,
+      "ytd_amount": 283.84
+    }
+  ]
+}

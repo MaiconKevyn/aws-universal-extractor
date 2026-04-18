@@ -1,0 +1,95 @@
+{
+  "employer": {
+    "name": "Callahan and Sons",
+    "ein": "69-9877065",
+    "address": "018 Mack Junctions Apt. 462, Smithview, NY 23917"
+  },
+  "employee": {
+    "name": "Rebecca Henderson",
+    "employee_id": "621878",
+    "ssn_last4": "9317",
+    "job_title": "Data Analyst",
+    "hire_date": "2016-12-05",
+    "pay_rate": 30.03,
+    "pay_frequency": "monthly"
+  },
+  "pay_period": {
+    "start_date": "2025-08-05",
+    "end_date": "2025-09-03",
+    "pay_date": "2025-09-08"
+  },
+  "currency": "USD",
+  "totals": {
+    "gross_pay": 5679.03,
+    "total_taxes": 1363.09,
+    "total_deductions": 1703.83,
+    "net_pay": 3975.2,
+    "ytd_gross_pay": 33214.9,
+    "ytd_net_pay": 22991.92
+  },
+  "line_items": [
+    {
+      "code": "REG",
+      "description": "Regular Pay",
+      "kind": "earning",
+      "hours": 173.33,
+      "rate": 30.03,
+      "amount": 5205.1,
+      "ytd_amount": 31230.6
+    },
+    {
+      "code": "OT",
+      "description": "Overtime",
+      "kind": "earning",
+      "hours": 10.52,
+      "rate": 45.05,
+      "amount": 473.93,
+      "ytd_amount": 1984.3
+    },
+    {
+      "code": "FIT",
+      "description": "Federal Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 688.24,
+      "ytd_amount": 4129.44
+    },
+    {
+      "code": "SS",
+      "description": "Social Security Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 352.1,
+      "ytd_amount": 2112.6
+    },
+    {
+      "code": "MED",
+      "description": "Medicare Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 82.35,
+      "ytd_amount": 494.1
+    },
+    {
+      "code": "SIT",
+      "description": "State Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 240.4,
+      "ytd_amount": 1442.4
+    },
+    {
+      "code": "401K",
+      "description": "401(k) Contribution",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 340.74,
+      "ytd_amount": 2044.44
+    }
+  ]
+}
