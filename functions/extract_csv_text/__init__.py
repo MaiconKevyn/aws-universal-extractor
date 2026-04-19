@@ -1,0 +1,1 @@
+"""Extract CSV text Lambda."""

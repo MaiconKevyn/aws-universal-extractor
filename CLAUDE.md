@@ -55,7 +55,7 @@ Every Lambda uses `BuildMethod: makefile` and shares `CodeUri: .` at the repo ro
 
 ### State machine flow (`template.yml`)
 
-`SubmitExtraction` (API, POST /extractions) → start execution → `FetchDocument` → `RouteByFormat` → `ExtractPdfText` or `ExtractXlsxText` → `LoadExtractionProfile` → `RunLlmExtraction` → `ValidateSchema` → `PersistResult`. Every task has a `Catch: States.ALL → PersistFailure` with `ResultPath: $.error`. The state input is augmented by `SubmitExtraction` with `request_id`, `submitted_at`, and `artifacts.{input_document_uri, output_bucket, output_prefix, run_uri, input}`; each downstream step mutates and forwards this object, appending `artifacts.document_metadata`, `artifacts.raw_text`, `resolved_profile`, `llm_extraction`, etc. PyMuPDF raises `DocumentExtractionError` on scanned PDFs — there is no OCR fallback yet.
+`SubmitExtraction` (API, POST /extractions) → start execution → `FetchDocument` → `RouteByFormat` → `ExtractPdfText`, `ExtractXlsxText`, `ExtractCsvText`, or `ExtractDocxText` → `LoadExtractionProfile` → `RunLlmExtraction` → `ValidateSchema` → `PersistResult`. Every task has a `Catch: States.ALL → PersistFailure` with `ResultPath: $.error`. The state input is augmented by `SubmitExtraction` with `request_id`, `submitted_at`, and `artifacts.{input_document_uri, output_bucket, output_prefix, run_uri, input}`; each downstream step mutates and forwards this object, appending `artifacts.document_metadata`, `artifacts.raw_text`, `resolved_profile`, `llm_extraction`, etc. PyMuPDF raises `DocumentExtractionError` on scanned PDFs — there is no OCR fallback yet.
 
 ### Extraction profiles
 
@@ -63,7 +63,7 @@ Versioned YAML at `profiles/<id>/<version>.yml` (e.g. `profiles/cash_requirement
 
 ## Deployment
 
-- Jenkins pipeline (`Jenkinsfile`) runs Checkout → Preflight (needs `python3.13`) → Prepare Python (builds `.aws-sam/runtime-deps`) → Resolve AWS Identity → `sam validate` → `sam build` → Deploy → optional fixture sync. Deploy requires `OPENAI_API_KEY_SECRET_ARN` (must match `arn:aws:secretsmanager:*`) and uses `--resolve-s3` unless `SAM_S3_BUCKET` is set. Fixture sync uploads local `tests/fixtures/payroll/{pdf,xlsx}` into `datasets/fixtures/payroll/{pdf,xlsx}` in the deployed documents bucket.
+- Jenkins pipeline (`Jenkinsfile`) runs Checkout → Preflight (needs `python3.13`) → Prepare Python (builds `.aws-sam/runtime-deps`) → Resolve AWS Identity → `sam validate` → `sam build` → Deploy → optional fixture sync. Deploy requires `OPENAI_API_KEY_SECRET_ARN` (must match `arn:aws:secretsmanager:*`) and uses `--resolve-s3` unless `SAM_S3_BUCKET` is set. Fixture sync uploads local `tests/fixtures/payroll/{pdf,xlsx,csv,docx}` into `datasets/fixtures/payroll/{pdf,xlsx,csv,docx}` in the deployed documents bucket.
 - A local Jenkins setup lives under `universal-extractor-jenkins/` (gitignored).
 
 ## Environment variables

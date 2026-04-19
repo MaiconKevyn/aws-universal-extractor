@@ -16,7 +16,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     result_key = f"{output_prefix}/result.json"
     status_key = f"{output_prefix}/status.json"
     document_format = event.get("document_format", "unknown")
-    text_extraction = event.get("pdf_extraction") or event.get("xlsx_extraction") or {}
+    text_extraction = (
+        event.get("pdf_extraction")
+        or event.get("xlsx_extraction")
+        or event.get("csv_extraction")
+        or event.get("docx_extraction")
+        or {}
+    )
     artifacts = event["artifacts"]
     artifacts["output_bucket"] = output_bucket
     artifacts["result"] = {"bucket": output_bucket, "key": result_key}

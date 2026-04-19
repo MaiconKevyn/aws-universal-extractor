@@ -6,7 +6,7 @@ Pipeline assíncrona em AWS para extração estruturada de documentos usando Ste
 
 - Entrada via endpoint HTTP assíncrono
 - Documento de entrada armazenado em S3
-- Extração de texto por formato, começando com PDF via PyMuPDF e XLSX via OpenPyXL
+- Extração de texto por formato: PDF via PyMuPDF, XLSX via OpenPyXL, CSV via biblioteca padrão e DOCX via python-docx
 - Perfil de extração versionado em YAML
 - Fixtures separadas de execuções: `datasets/fixtures/...` para entradas de teste e `runs/...` para artefatos de processamento
 - Saída persistida por execução em `runs/<profile>/<version>/<YYYY>/<MM>/<DD>/<request_id>/`
@@ -32,6 +32,8 @@ As fixtures de payroll ficam separadas por formato no prefixo:
 ```text
 s3://<documents-bucket>/datasets/fixtures/payroll/pdf/
 s3://<documents-bucket>/datasets/fixtures/payroll/xlsx/
+s3://<documents-bucket>/datasets/fixtures/payroll/csv/
+s3://<documents-bucket>/datasets/fixtures/payroll/docx/
 ```
 
 O Jenkinsfile sincroniza automaticamente as fixtures locais de `tests/fixtures/payroll/` para esse prefixo após o deploy, quando `SYNC_PAYROLL_FIXTURES=true`.
@@ -97,6 +99,8 @@ functions/
   fetch_document/
   extract_pdf_text/
   extract_xlsx_text/
+  extract_csv_text/
+  extract_docx_text/
   load_extraction_profile/
   run_llm_extraction/
   validate_schema/
@@ -110,11 +114,15 @@ profiles/
 events/
   submit-extraction.json
   submit-payroll-xlsx-extraction.json
+  submit-payroll-csv-extraction.json
+  submit-payroll-docx-extraction.json
 tests/
   fixtures/
     payroll/
       pdf/
       xlsx/
+      csv/
+      docx/
 ```
 
 ## Perfil de extração
@@ -133,7 +141,7 @@ O arquivo concentra:
 1. `SubmitExtraction` recebe a requisição e inicia a execution
 2. `FetchDocument` valida que o documento existe no S3, detecta o formato e persiste `document_metadata.json`
 3. `RouteByFormat` escolhe o extractor correto
-4. `ExtractPdfText` ou `ExtractXlsxText` extrai texto e persiste `raw_text.txt`
+4. `ExtractPdfText`, `ExtractXlsxText`, `ExtractCsvText` ou `ExtractDocxText` extrai texto e persiste `raw_text.txt`
 5. `LoadExtractionProfile` carrega o YAML do perfil versionado
 6. `RunLLMExtraction` chama a OpenAI com Structured Outputs
 7. `ValidateSchema` valida o JSON retornado

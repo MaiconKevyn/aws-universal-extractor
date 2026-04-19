@@ -140,6 +140,34 @@ Resources:
         - S3WritePolicy:
             BucketName: !Ref DocumentsBucket
 
+  ExtractCsvTextFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.extract_csv_text.app.lambda_handler
+      Timeout: 120
+      MemorySize: 1024
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DocumentsBucket
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
+
+  ExtractDocxTextFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.extract_docx_text.app.lambda_handler
+      Timeout: 120
+      MemorySize: 1024
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DocumentsBucket
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
+
   LoadExtractionProfileFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -206,6 +234,10 @@ Resources:
         - LambdaInvokePolicy:
             FunctionName: !Ref ExtractXlsxTextFunction
         - LambdaInvokePolicy:
+            FunctionName: !Ref ExtractCsvTextFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ExtractDocxTextFunction
+        - LambdaInvokePolicy:
             FunctionName: !Ref LoadExtractionProfileFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref RunLlmExtractionFunction
@@ -245,6 +277,12 @@ Resources:
               - Variable: $.document_format
                 StringEquals: xlsx
                 Next: ExtractXlsxText
+              - Variable: $.document_format
+                StringEquals: csv
+                Next: ExtractCsvText
+              - Variable: $.document_format
+                StringEquals: docx
+                Next: ExtractDocxText
             Default: UnsupportedFormat
           UnsupportedFormat:
             Type: Pass
@@ -273,6 +311,40 @@ Resources:
           ExtractXlsxText:
             Type: Task
             Resource: !GetAtt ExtractXlsxTextFunction.Arn
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                IntervalSeconds: 2
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: LoadExtractionProfile
+          ExtractCsvText:
+            Type: Task
+            Resource: !GetAtt ExtractCsvTextFunction.Arn
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                IntervalSeconds: 2
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: LoadExtractionProfile
+          ExtractDocxText:
+            Type: Task
+            Resource: !GetAtt ExtractDocxTextFunction.Arn
             Retry:
               - ErrorEquals:
                   - Lambda.ServiceException

@@ -1,0 +1,28 @@
+section,field,value,code,description,kind,hours,rate,current_amount,ytd_amount
+employer,name,"Rodriguez, Figueroa and Sanchez",,,,,,,
+employer,ein,14-1499914,,,,,,,
+employer,address,"38908 Jennifer Squares, Robinsonshire, KY 01352",,,,,,,
+employee,name,Brian Yang,,,,,,,
+employee,employee_id,481029,,,,,,,
+employee,ssn_last4,3615,,,,,,,
+employee,job_title,Financial Analyst,,,,,,,
+employee,hire_date,2021-09-29,,,,,,,
+employee,pay_rate,33.68,,,,,,,
+employee,pay_frequency,weekly,,,,,,,
+pay_period,start_date,2025-11-13,,,,,,,
+pay_period,end_date,2025-11-19,,,,,,,
+pay_period,pay_date,2025-11-23,,,,,,,
+summary,currency,USD,,,,,,,
+summary,gross_pay,2107.19,,,,,,,
+summary,total_taxes,595.75,,,,,,,
+summary,total_deductions,595.75,,,,,,,
+summary,net_pay,1511.44,,,,,,,
+summary,ytd_gross_pay,84475.67,,,,,,,
+summary,ytd_net_pay,54688.17,,,,,,,
+line_item,,,REG,Regular Pay,earning,40,33.68,1347.20,67360.00
+line_item,,,OT,Overtime,earning,11.63,50.52,587.55,16822.87
+line_item,,,PTO,Paid Time Off,earning,5.12,33.68,172.44,292.80
+line_item,,,FIT,Federal Income Tax,deduction,,,312.20,15610.00
+line_item,,,SS,Social Security Tax,deduction,,,130.65,6532.50
+line_item,,,MED,Medicare Tax,deduction,,,30.55,1527.50
+line_item,,,SIT,State Income Tax,deduction,,,122.35,6117.50

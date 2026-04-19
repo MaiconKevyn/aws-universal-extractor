@@ -1,0 +1,95 @@
+{
+  "employer": {
+    "name": "Ramirez-Reid",
+    "ein": "92-2197935",
+    "address": "327 Nelson Route, Lake Mark, WI 07832"
+  },
+  "employee": {
+    "name": "Jacob Clark",
+    "employee_id": "745911",
+    "ssn_last4": "4752",
+    "job_title": "Software Engineer",
+    "hire_date": "2018-12-18",
+    "pay_rate": 146594.34,
+    "pay_frequency": "semimonthly"
+  },
+  "pay_period": {
+    "start_date": "2026-03-11",
+    "end_date": "2026-03-25",
+    "pay_date": "2026-03-29"
+  },
+  "currency": "USD",
+  "totals": {
+    "gross_pay": 7763.78,
+    "total_taxes": 2015.32,
+    "total_deductions": 2122.49,
+    "net_pay": 5641.29,
+    "ytd_gross_pay": 74952.88,
+    "ytd_net_pay": 49483.0
+  },
+  "line_items": [
+    {
+      "code": "REG",
+      "description": "Regular Pay",
+      "kind": "earning",
+      "hours": null,
+      "rate": null,
+      "amount": 6108.1,
+      "ytd_amount": 73297.2
+    },
+    {
+      "code": "BON",
+      "description": "Bonus",
+      "kind": "earning",
+      "hours": null,
+      "rate": null,
+      "amount": 1655.68,
+      "ytd_amount": 1655.68
+    },
+    {
+      "code": "FIT",
+      "description": "Federal Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 1012.48,
+      "ytd_amount": 12149.76
+    },
+    {
+      "code": "SS",
+      "description": "Social Security Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 481.35,
+      "ytd_amount": 5776.2
+    },
+    {
+      "code": "MED",
+      "description": "Medicare Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 112.57,
+      "ytd_amount": 1350.84
+    },
+    {
+      "code": "SIT",
+      "description": "State Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 408.92,
+      "ytd_amount": 4907.04
+    },
+    {
+      "code": "HLTH",
+      "description": "Health Insurance",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 107.17,
+      "ytd_amount": 1286.04
+    }
+  ]
+}

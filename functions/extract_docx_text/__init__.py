@@ -1,0 +1,1 @@
+"""Extract DOCX text Lambda."""

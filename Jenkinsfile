@@ -14,7 +14,7 @@ pipeline {
         string(name: 'OPENAI_MODEL', defaultValue: 'gpt-4.1-mini', description: 'Template parameter OpenAIModel')
         string(name: 'SAM_S3_BUCKET', defaultValue: '', description: 'Optional S3 bucket for SAM artifacts. Leave blank to use --resolve-s3')
         booleanParam(name: 'DEPLOY_ENABLED', defaultValue: true, description: 'If disabled, the job stops after validate/build')
-        booleanParam(name: 'SYNC_PAYROLL_FIXTURES', defaultValue: true, description: 'Upload tests/fixtures/payroll/{pdf,xlsx} to datasets/fixtures/payroll/ in the deployed documents bucket after deploy')
+        booleanParam(name: 'SYNC_PAYROLL_FIXTURES', defaultValue: true, description: 'Upload tests/fixtures/payroll/{pdf,xlsx,csv,docx} to datasets/fixtures/payroll/ in the deployed documents bucket after deploy')
     }
 
     environment {
@@ -167,7 +167,9 @@ pipeline {
                       --region "$AWS_DEFAULT_REGION" \
                       --exclude "*" \
                       --include "*.pdf" \
-                      --include "*.xlsx"
+                      --include "*.xlsx" \
+                      --include "*.csv" \
+                      --include "*.docx"
                 '''
             }
         }

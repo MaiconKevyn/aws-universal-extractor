@@ -1,0 +1,31 @@
+section,field,value,code,description,kind,hours,rate,current_amount,ytd_amount
+employer,name,"Henderson, Ramirez and Lewis",,,,,,,
+employer,ein,43-1728977,,,,,,,
+employer,address,"161 Calderon River Suite 931, Lake Jeremyport, CO 31013",,,,,,,
+employee,name,Ashley James,,,,,,,
+employee,employee_id,879693,,,,,,,
+employee,ssn_last4,2654,,,,,,,
+employee,job_title,Systems Analyst,,,,,,,
+employee,hire_date,2019-11-18,,,,,,,
+employee,pay_rate,55844.84,,,,,,,
+employee,pay_frequency,semimonthly,,,,,,,
+pay_period,start_date,2025-08-06,,,,,,,
+pay_period,end_date,2025-08-20,,,,,,,
+pay_period,pay_date,2025-08-26,,,,,,,
+summary,currency,USD,,,,,,,
+summary,gross_pay,2782.62,,,,,,,
+summary,total_taxes,687.98,,,,,,,
+summary,total_deductions,1148.80,,,,,,,
+summary,net_pay,1633.82,,,,,,,
+summary,ytd_gross_pay,31890.82,,,,,,,
+summary,ytd_net_pay,16956.42,,,,,,,
+line_item,,,REG,Regular Pay,earning,,,2326.87,30249.31
+line_item,,,OT,Overtime,earning,5.61,40.27,225.91,1164.15
+line_item,,,PTO,Paid Time Off,earning,8.56,26.85,229.84,477.36
+line_item,,,FIT,Federal Income Tax,deduction,,,354.83,4612.79
+line_item,,,SS,Social Security Tax,deduction,,,172.52,2242.76
+line_item,,,MED,Medicare Tax,deduction,,,40.35,524.55
+line_item,,,SIT,State Income Tax,deduction,,,120.28,1563.64
+line_item,,,401K,401(k) Contribution,deduction,,,222.61,2893.93
+line_item,,,HLTH,Health Insurance,deduction,,,215.30,2798.90
+line_item,,,DENT,Dental Insurance,deduction,,,22.91,297.83

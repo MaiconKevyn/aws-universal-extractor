@@ -1,0 +1,28 @@
+section,field,value,code,description,kind,hours,rate,current_amount,ytd_amount
+employer,name,Ramirez-Reid,,,,,,,
+employer,ein,92-2197935,,,,,,,
+employer,address,"327 Nelson Route, Lake Mark, WI 07832",,,,,,,
+employee,name,Jacob Clark,,,,,,,
+employee,employee_id,745911,,,,,,,
+employee,ssn_last4,4752,,,,,,,
+employee,job_title,Software Engineer,,,,,,,
+employee,hire_date,2018-12-18,,,,,,,
+employee,pay_rate,146594.34,,,,,,,
+employee,pay_frequency,semimonthly,,,,,,,
+pay_period,start_date,2026-03-11,,,,,,,
+pay_period,end_date,2026-03-25,,,,,,,
+pay_period,pay_date,2026-03-29,,,,,,,
+summary,currency,USD,,,,,,,
+summary,gross_pay,7763.78,,,,,,,
+summary,total_taxes,2015.32,,,,,,,
+summary,total_deductions,2122.49,,,,,,,
+summary,net_pay,5641.29,,,,,,,
+summary,ytd_gross_pay,74952.88,,,,,,,
+summary,ytd_net_pay,49483.00,,,,,,,
+line_item,,,REG,Regular Pay,earning,,,6108.10,73297.20
+line_item,,,BON,Bonus,earning,,,1655.68,1655.68
+line_item,,,FIT,Federal Income Tax,deduction,,,1012.48,12149.76
+line_item,,,SS,Social Security Tax,deduction,,,481.35,5776.20
+line_item,,,MED,Medicare Tax,deduction,,,112.57,1350.84
+line_item,,,SIT,State Income Tax,deduction,,,408.92,4907.04
+line_item,,,HLTH,Health Insurance,deduction,,,107.17,1286.04

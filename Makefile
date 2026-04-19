@@ -6,6 +6,8 @@ RUNTIME_DEPS_DIR := $(PROJECT_ROOT)/.aws-sam/runtime-deps
 	build-FetchDocumentFunction \
 	build-ExtractPdfTextFunction \
 	build-ExtractXlsxTextFunction \
+	build-ExtractCsvTextFunction \
+	build-ExtractDocxTextFunction \
 	build-LoadExtractionProfileFunction \
 	build-RunLlmExtractionFunction \
 	build-ValidateSchemaFunction \
@@ -30,6 +32,12 @@ build-ExtractPdfTextFunction:
 	$(build_lambda)
 
 build-ExtractXlsxTextFunction:
+	$(build_lambda)
+
+build-ExtractCsvTextFunction:
+	$(build_lambda)
+
+build-ExtractDocxTextFunction:
 	$(build_lambda)
 
 build-LoadExtractionProfileFunction:
