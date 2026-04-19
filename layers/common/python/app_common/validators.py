@@ -6,6 +6,15 @@ from jsonschema import ValidationError, validate
 from app_common.exceptions import RequestValidationError, StructuredOutputValidationError
 
 
+def _get_path_value(payload: dict[str, Any], path: str) -> Any:
+    value: Any = payload
+    for part in path.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
 def validate_submission_payload(payload: dict[str, Any]) -> dict[str, Any]:
     document = payload.get("document")
     extraction_profile = payload.get("extraction_profile")
@@ -41,7 +50,7 @@ def validate_schema_output(
 
     errors: list[str] = []
     for field_name in validation_rules.get("required_non_empty_fields", []):
-        value = extracted_data.get(field_name)
+        value = _get_path_value(extracted_data, field_name)
         if value in (None, "", [], {}):
             errors.append(f"Field {field_name} must be non-empty")
 
@@ -53,4 +62,3 @@ def validate_schema_output(
 
 def to_metadata_json(metadata: dict[str, Any]) -> str:
     return json.dumps(metadata, ensure_ascii=True, sort_keys=True)
-
