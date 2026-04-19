@@ -4,7 +4,7 @@ Dev-only dependencies (not shipped to Lambda):
     pip install openpyxl faker
 
 Usage:
-    python scripts/generate_fake_xlsx_payrolls.py --out tests/fixtures/payrolls --count 5
+    python scripts/generate_fake_xlsx_payrolls.py --out tests/fixtures/payroll/xlsx --count 5
 
 Each XLSX is paired with a <stem>.expected.json ground-truth file — the SAME schema
 used by the PDF fixtures, since the `payroll/v1` profile is format-agnostic.

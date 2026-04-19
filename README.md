@@ -6,9 +6,10 @@ Pipeline assíncrona em AWS para extração estruturada de documentos usando Ste
 
 - Entrada via endpoint HTTP assíncrono
 - Documento de entrada armazenado em S3
-- Extração de texto de PDF com PyMuPDF
+- Extração de texto por formato, começando com PDF via PyMuPDF e XLSX via OpenPyXL
 - Perfil de extração versionado em YAML
-- Saída persistida no mesmo diretório do documento em `extract/<profile>/<version>/<request_id>/`
+- Fixtures separadas de execuções: `datasets/fixtures/...` para entradas de teste e `runs/...` para artefatos de processamento
+- Saída persistida por execução em `runs/<profile>/<version>/<YYYY>/<MM>/<DD>/<request_id>/`
 
 ## Bucket de documentos
 
@@ -26,13 +27,29 @@ payroll-dev-498504717701-sa-east-1
 
 Observação: `Payroll/` não é um nome válido de bucket S3. Em S3, `Payroll/` seria um prefixo/pasta. Bucket precisa ser minúsculo, sem `/`, e globalmente único.
 
-Os PDFs de payroll usados como fixture ficam no prefixo:
+As fixtures de payroll ficam separadas por formato no prefixo:
 
 ```text
-s3://<documents-bucket>/tests/fixtures/payrolls/
+s3://<documents-bucket>/datasets/fixtures/payroll/pdf/
+s3://<documents-bucket>/datasets/fixtures/payroll/xlsx/
 ```
 
-O Jenkinsfile sincroniza automaticamente os PDFs locais de `tests/fixtures/payrolls/*.pdf` para esse prefixo após o deploy, quando `SYNC_PAYROLL_FIXTURES=true`.
+O Jenkinsfile sincroniza automaticamente as fixtures locais de `tests/fixtures/payroll/` para esse prefixo após o deploy, quando `SYNC_PAYROLL_FIXTURES=true`.
+
+As execuções geram artefatos em uma árvore separada:
+
+```text
+s3://<documents-bucket>/runs/payroll/v1/2026/04/18/req_<id>/
+  input.json
+  document_metadata.json
+  raw_text.txt
+  llm_response.json
+  result.json
+  status.json
+  error.json
+```
+
+`error.json` só existe em execuções com falha. Essa separação mantém datasets, arquivos de entrada e resultados auditáveis sem misturar origem com processamento.
 
 ## Payload de entrada
 
@@ -40,7 +57,7 @@ O Jenkinsfile sincroniza automaticamente os PDFs locais de `tests/fixtures/payro
 {
   "document": {
     "bucket": "payroll-dev-498504717701-sa-east-1",
-    "key": "tests/fixtures/payrolls/paystub_001_canonical.pdf"
+    "key": "datasets/fixtures/payroll/pdf/paystub_001_canonical.pdf"
   },
   "extraction_profile": {
     "id": "payroll",
@@ -62,7 +79,8 @@ O Jenkinsfile sincroniza automaticamente os PDFs locais de `tests/fixtures/payro
   "status": "accepted",
   "request_id": "req_123",
   "execution_arn": "arn:aws:states:sa-east-1:123456789012:execution:document-extraction:req_123",
-  "message": "Extraction triggered successfully"
+  "message": "Extraction triggered successfully",
+  "output_prefix": "s3://payroll-dev-498504717701-sa-east-1/runs/payroll/v1/2026/04/18/req_123"
 }
 ```
 
@@ -78,6 +96,7 @@ functions/
   submit_extraction/
   fetch_document/
   extract_pdf_text/
+  extract_xlsx_text/
   load_extraction_profile/
   run_llm_extraction/
   validate_schema/
@@ -90,7 +109,12 @@ profiles/
     v1.yml
 events/
   submit-extraction.json
+  submit-payroll-xlsx-extraction.json
 tests/
+  fixtures/
+    payroll/
+      pdf/
+      xlsx/
 ```
 
 ## Perfil de extração
@@ -107,13 +131,14 @@ O arquivo concentra:
 ## Fluxo da State Machine
 
 1. `SubmitExtraction` recebe a requisição e inicia a execution
-2. `FetchDocument` valida que o PDF existe no S3
-3. `ExtractPdfText` lê o PDF com PyMuPDF e persiste `raw_text.txt`
-4. `LoadExtractionProfile` carrega o YAML do perfil versionado
-5. `RunLLMExtraction` chama a OpenAI com Structured Outputs
-6. `ValidateSchema` valida o JSON retornado
-7. `PersistResult` grava `result.json` e `status.json`
-8. Em caso de erro, `PersistFailure` grava `status.json` com falha
+2. `FetchDocument` valida que o documento existe no S3, detecta o formato e persiste `document_metadata.json`
+3. `RouteByFormat` escolhe o extractor correto
+4. `ExtractPdfText` ou `ExtractXlsxText` extrai texto e persiste `raw_text.txt`
+5. `LoadExtractionProfile` carrega o YAML do perfil versionado
+6. `RunLLMExtraction` chama a OpenAI com Structured Outputs
+7. `ValidateSchema` valida o JSON retornado
+8. `PersistResult` grava `result.json` e `status.json`
+9. Em caso de erro, `PersistFailure` grava `error.json` e `status.json`
 
 ## Deploy
 

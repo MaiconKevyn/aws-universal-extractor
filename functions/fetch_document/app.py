@@ -3,7 +3,7 @@ from typing import Any
 
 from app_common.config import get_settings
 from app_common.logging import get_logger, log_json
-from app_common.s3_utils import head_object
+from app_common.s3_utils import head_object, put_json
 
 
 logger = get_logger(__name__)
@@ -62,6 +62,24 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "last_modified": last_modified.isoformat() if last_modified else None,
     }
     event["document_format"] = _detect_format(key, content_type)
+
+    artifacts = event["artifacts"]
+    output_bucket = artifacts["output_bucket"]
+    metadata_key = f"{artifacts['output_prefix']}/document_metadata.json"
+    put_json(
+        output_bucket,
+        metadata_key,
+        {
+            "request_id": event["request_id"],
+            "document": event["document"],
+            "document_format": event["document_format"],
+            "document_metadata": event["document_metadata"],
+        },
+    )
+    artifacts["document_metadata"] = {
+        "bucket": output_bucket,
+        "key": metadata_key,
+    }
 
     log_json(
         logger,

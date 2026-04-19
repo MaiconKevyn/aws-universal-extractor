@@ -15,17 +15,25 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     result_key = f"{output_prefix}/result.json"
     status_key = f"{output_prefix}/status.json"
+    document_format = event.get("document_format", "unknown")
+    text_extraction = event.get("pdf_extraction") or event.get("xlsx_extraction") or {}
+    artifacts = event["artifacts"]
+    artifacts["output_bucket"] = output_bucket
+    artifacts["result"] = {"bucket": output_bucket, "key": result_key}
+    artifacts["status"] = {"bucket": output_bucket, "key": status_key}
 
     result_payload = {
         "request_id": event["request_id"],
         "status": "SUCCEEDED",
+        "submitted_at": event.get("submitted_at"),
         "document": event["document"],
+        "document_format": document_format,
         "document_metadata": event.get("document_metadata", {}),
         "extraction_profile": event["extraction_profile"],
         "client_id": event.get("client_id"),
         "document_id": event.get("document_id"),
         "metadata": event.get("metadata", {}),
-        "pdf_extraction": event.get("pdf_extraction", {}),
+        "text_extraction": text_extraction,
         "llm": {
             "model": event["llm_extraction"]["model"],
             "response_id": event["llm_extraction"]["response_id"],
@@ -33,20 +41,21 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         },
         "extracted_data": event["llm_extraction"]["data"],
         "validation": event.get("validation", {}),
-        "artifacts": event["artifacts"],
+        "artifacts": artifacts,
     }
     status_payload = {
         "request_id": event["request_id"],
         "status": "SUCCEEDED",
+        "submitted_at": event.get("submitted_at"),
+        "document": event["document"],
+        "document_format": document_format,
+        "extraction_profile": event["extraction_profile"],
         "result_uri": s3_uri(output_bucket, result_key),
+        "artifacts": artifacts,
     }
 
     put_json(output_bucket, result_key, result_payload)
     put_json(output_bucket, status_key, status_payload)
-
-    event["artifacts"]["output_bucket"] = output_bucket
-    event["artifacts"]["result"] = {"bucket": output_bucket, "key": result_key}
-    event["artifacts"]["status"] = {"bucket": output_bucket, "key": status_key}
 
     log_json(
         logger,

@@ -1,0 +1,95 @@
+{
+  "employer": {
+    "name": "Rodriguez, Figueroa and Sanchez",
+    "ein": "14-1499914",
+    "address": "38908 Jennifer Squares, Robinsonshire, KY 01352"
+  },
+  "employee": {
+    "name": "Brian Yang",
+    "employee_id": "481029",
+    "ssn_last4": "3615",
+    "job_title": "Financial Analyst",
+    "hire_date": "2021-09-29",
+    "pay_rate": 33.68,
+    "pay_frequency": "weekly"
+  },
+  "pay_period": {
+    "start_date": "2025-11-13",
+    "end_date": "2025-11-19",
+    "pay_date": "2025-11-23"
+  },
+  "currency": "USD",
+  "totals": {
+    "gross_pay": 2107.19,
+    "total_taxes": 595.75,
+    "total_deductions": 595.75,
+    "net_pay": 1511.44,
+    "ytd_gross_pay": 84475.67,
+    "ytd_net_pay": 54688.17
+  },
+  "line_items": [
+    {
+      "code": "REG",
+      "description": "Regular Pay",
+      "kind": "earning",
+      "hours": 40,
+      "rate": 33.68,
+      "amount": 1347.2,
+      "ytd_amount": 67360.0
+    },
+    {
+      "code": "OT",
+      "description": "Overtime",
+      "kind": "earning",
+      "hours": 11.63,
+      "rate": 50.52,
+      "amount": 587.55,
+      "ytd_amount": 16822.87
+    },
+    {
+      "code": "PTO",
+      "description": "Paid Time Off",
+      "kind": "earning",
+      "hours": 5.12,
+      "rate": 33.68,
+      "amount": 172.44,
+      "ytd_amount": 292.8
+    },
+    {
+      "code": "FIT",
+      "description": "Federal Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 312.2,
+      "ytd_amount": 15610.0
+    },
+    {
+      "code": "SS",
+      "description": "Social Security Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 130.65,
+      "ytd_amount": 6532.5
+    },
+    {
+      "code": "MED",
+      "description": "Medicare Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 30.55,
+      "ytd_amount": 1527.5
+    },
+    {
+      "code": "SIT",
+      "description": "State Income Tax",
+      "kind": "deduction",
+      "hours": null,
+      "rate": null,
+      "amount": 122.35,
+      "ytd_amount": 6117.5
+    }
+  ]
+}

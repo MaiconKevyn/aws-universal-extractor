@@ -15,9 +15,8 @@ class ProfileValidationError(AppError):
 
 
 class DocumentExtractionError(AppError):
-    """Raised when PDF text extraction fails."""
+    """Raised when document text extraction fails."""
 
 
 class StructuredOutputValidationError(AppError):
     """Raised when the extracted JSON does not match the schema."""
-

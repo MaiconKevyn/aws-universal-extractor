@@ -8,7 +8,7 @@ Uses the exact same modules that run inside the Lambdas (layers/common/python/ap
 
 Usage:
     ./.venv/bin/python scripts/extract_locally.py \
-        --pdf tests/fixtures/payrolls/paystub_001_canonical.pdf \
+        --pdf tests/fixtures/payroll/pdf/paystub_001_canonical.pdf \
         --profile payroll --version v1
 """
 

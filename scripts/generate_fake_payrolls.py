@@ -4,7 +4,7 @@ Dev-only dependencies (not shipped to Lambda):
     pip install reportlab faker
 
 Usage:
-    python scripts/generate_fake_payrolls.py --out tests/fixtures/payrolls --count 5
+    python scripts/generate_fake_payrolls.py --out tests/fixtures/payroll/pdf --count 5
     python scripts/generate_fake_payrolls.py --variant scanned --out /tmp/payrolls
 
 Each PDF is paired with a <stem>.expected.json ground-truth file so it can double as a

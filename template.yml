@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Async PDF extraction pipeline with Step Functions, Lambda, S3 and OpenAI.
+Description: Async document extraction pipeline with Step Functions, Lambda, S3 and OpenAI.
 
 Parameters:
   StageName:
@@ -85,6 +85,8 @@ Resources:
         Variables:
           STATE_MACHINE_ARN: !Ref DocumentExtractionStateMachine
       Policies:
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
         - Statement:
             - Effect: Allow
               Action:
@@ -107,6 +109,8 @@ Resources:
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref DocumentsBucket
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
 
   ExtractPdfTextFunction:
     Type: AWS::Serverless::Function
@@ -114,6 +118,20 @@ Resources:
       BuildMethod: makefile
     Properties:
       Handler: functions.extract_pdf_text.app.lambda_handler
+      Timeout: 120
+      MemorySize: 1024
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DocumentsBucket
+        - S3WritePolicy:
+            BucketName: !Ref DocumentsBucket
+
+  ExtractXlsxTextFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.extract_xlsx_text.app.lambda_handler
       Timeout: 120
       MemorySize: 1024
       Policies:
@@ -186,6 +204,8 @@ Resources:
         - LambdaInvokePolicy:
             FunctionName: !Ref ExtractPdfTextFunction
         - LambdaInvokePolicy:
+            FunctionName: !Ref ExtractXlsxTextFunction
+        - LambdaInvokePolicy:
             FunctionName: !Ref LoadExtractionProfileFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref RunLlmExtractionFunction
@@ -222,6 +242,9 @@ Resources:
               - Variable: $.document_format
                 StringEquals: pdf
                 Next: ExtractPdfText
+              - Variable: $.document_format
+                StringEquals: xlsx
+                Next: ExtractXlsxText
             Default: UnsupportedFormat
           UnsupportedFormat:
             Type: Pass
@@ -233,6 +256,23 @@ Resources:
           ExtractPdfText:
             Type: Task
             Resource: !GetAtt ExtractPdfTextFunction.Arn
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                IntervalSeconds: 2
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
+            Next: LoadExtractionProfile
+          ExtractXlsxText:
+            Type: Task
+            Resource: !GetAtt ExtractXlsxTextFunction.Arn
             Retry:
               - ErrorEquals:
                   - Lambda.ServiceException
@@ -300,5 +340,5 @@ Outputs:
     Description: Bucket created for source documents and extraction artifacts
     Value: !Ref DocumentsBucket
   PayrollFixturesPrefix:
-    Description: S3 prefix used by Jenkins to upload payroll PDF fixtures
-    Value: tests/fixtures/payrolls/
+    Description: S3 prefix used by Jenkins to upload payroll fixtures
+    Value: datasets/fixtures/payroll/

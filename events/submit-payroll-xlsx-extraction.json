@@ -1,15 +1,15 @@
 {
   "document": {
     "bucket": "payroll-dev-498504717701-sa-east-1",
-    "key": "datasets/fixtures/payroll/pdf/paystub_001_canonical.pdf"
+    "key": "datasets/fixtures/payroll/xlsx/paystub_001_canonical.xlsx"
   },
   "extraction_profile": {
     "id": "payroll",
     "version": "v1"
   },
   "client_id": "internal",
-  "document_id": "paystub_001_canonical",
-  "idempotency_key": "internal-paystub-001-payroll-v1",
+  "document_id": "paystub_001_canonical_xlsx",
+  "idempotency_key": "internal-paystub-001-payroll-v1-xlsx",
   "metadata": {
     "source_system": "jenkins_fixture"
   }

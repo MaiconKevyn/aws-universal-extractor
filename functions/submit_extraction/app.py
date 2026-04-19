@@ -10,7 +10,7 @@ import boto3
 from app_common.config import get_settings
 from app_common.exceptions import RequestValidationError
 from app_common.logging import get_logger, log_json
-from app_common.s3_utils import derive_output_prefix, s3_uri
+from app_common.s3_utils import derive_output_prefix, put_json, s3_uri
 from app_common.validators import validate_submission_payload
 
 
@@ -76,18 +76,26 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     profile_id = payload["extraction_profile"]["id"]
     profile_version = payload["extraction_profile"]["version"]
-    output_prefix = derive_output_prefix(document_key, profile_id, profile_version, request_id)
+    submitted_at = datetime.now(UTC).isoformat()
+    output_prefix = derive_output_prefix(profile_id, profile_version, request_id, submitted_at)
+    input_key = f"{output_prefix}/input.json"
 
     state_input = {
         **payload,
         "request_id": request_id,
-        "submitted_at": datetime.now(UTC).isoformat(),
+        "submitted_at": submitted_at,
         "artifacts": {
             "input_document_uri": s3_uri(document_bucket, document_key),
             "output_bucket": output_bucket,
             "output_prefix": output_prefix,
+            "run_uri": s3_uri(output_bucket, output_prefix),
+            "input": {
+                "bucket": output_bucket,
+                "key": input_key,
+            },
         },
     }
+    put_json(output_bucket, input_key, state_input)
 
     execution = stepfunctions_client.start_execution(
         stateMachineArn=settings.state_machine_arn,
