@@ -54,6 +54,26 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     request_id = _request_id(payload)
     document_bucket = payload["document"]["bucket"]
     document_key = payload["document"]["key"]
+    output_bucket = settings.documents_bucket_name or document_bucket
+
+    if settings.documents_bucket_name and document_bucket != settings.documents_bucket_name:
+        message = (
+            f"document.bucket must be {settings.documents_bucket_name}; "
+            f"received {document_bucket}"
+        )
+        log_json(
+            logger,
+            "Invalid document bucket",
+            request_id=request_id,
+            expected_bucket=settings.documents_bucket_name,
+            received_bucket=document_bucket,
+        )
+        return {
+            "statusCode": 400,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"status": "invalid_request", "message": message}),
+        }
+
     profile_id = payload["extraction_profile"]["id"]
     profile_version = payload["extraction_profile"]["version"]
     output_prefix = derive_output_prefix(document_key, profile_id, profile_version, request_id)
@@ -64,7 +84,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "submitted_at": datetime.now(UTC).isoformat(),
         "artifacts": {
             "input_document_uri": s3_uri(document_bucket, document_key),
-            "output_bucket": document_bucket,
+            "output_bucket": output_bucket,
             "output_prefix": output_prefix,
         },
     }
@@ -93,8 +113,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "request_id": request_id,
                 "execution_arn": execution["executionArn"],
                 "message": "Extraction triggered successfully",
-                "output_prefix": s3_uri(document_bucket, output_prefix),
+                "output_prefix": s3_uri(output_bucket, output_prefix),
             }
         ),
     }
-

@@ -1,5 +1,6 @@
 from typing import Any
 
+from app_common.config import get_settings
 from app_common.logging import get_logger, log_json
 from app_common.s3_utils import put_json, s3_uri
 
@@ -8,7 +9,8 @@ logger = get_logger(__name__)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    output_bucket = event["artifacts"]["output_bucket"]
+    settings = get_settings()
+    output_bucket = settings.documents_bucket_name or event["artifacts"]["output_bucket"]
     output_prefix = event["artifacts"]["output_prefix"]
 
     result_key = f"{output_prefix}/result.json"
@@ -42,6 +44,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     put_json(output_bucket, result_key, result_payload)
     put_json(output_bucket, status_key, status_payload)
 
+    event["artifacts"]["output_bucket"] = output_bucket
     event["artifacts"]["result"] = {"bucket": output_bucket, "key": result_key}
     event["artifacts"]["status"] = {"bucket": output_bucket, "key": status_key}
 
@@ -52,4 +55,3 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         result_uri=s3_uri(output_bucket, result_key),
     )
     return event
-
