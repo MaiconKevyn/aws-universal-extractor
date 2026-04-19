@@ -15,6 +15,7 @@ The project is a reference implementation of the AI-Engineer playbook: LLMs as c
 - **Versioned prompt/schema pairs.** Every profile is `profiles/<id>/<version>.yml`. Changes ship as a new version — old executions stay reproducible.
 - **Domain-aware prompting.** The payroll profile ships a taxonomy (earnings vs. deductions), number/date normalization rules (US `1,234.56` → `1234.56`, `MM/DD/YYYY` → `YYYY-MM-DD`), and nullability discipline (never invent values).
 - **Measurable accuracy.** Every fixture ships with a `.expected.json` ground-truth file. Current field-level accuracy on the payroll profile: **PDF 98.6% · XLSX 95.7% · CSV 100% · DOCX 98.6%**.
+- **Production controls around the model call.** LLM runs now include prompt-injection boundaries, retryable/non-retryable error taxonomy, optional chunking for long documents, confidence scoring, token/cost metrics, trace artifacts, and DynamoDB cache deduplication.
 
 **Format-agnostic ingestion**
 - One `payroll/v1` schema, four extraction paths (multi-strategy PDF, openpyxl, stdlib `csv`, python-docx), one consistent result shape. Adding a new format is one Lambda + one branch in the Step Functions `Choice` state — no schema change.
@@ -171,6 +172,18 @@ Prints the extracted JSON, schema errors (if any), token usage, and model ID. Sa
 ```
 
 Runs CSV and DOCX extraction end-to-end against local fixtures and reports field-level accuracy vs. the ground-truth `.expected.json` files.
+
+### Run the CI evaluation harness locally
+
+```bash
+./.venv/bin/python scripts/evaluate_fixtures.py --mode offline
+```
+
+Offline mode validates fixture schemas and text normalization without calling OpenAI. If `OPENAI_API_KEY` is configured, run the model-backed gate:
+
+```bash
+./.venv/bin/python scripts/evaluate_fixtures.py --mode llm --sample-per-format 1 --min-accuracy 0.95
+```
 
 ---
 
@@ -353,6 +366,8 @@ runs/payroll/v1/2026/04/19/req_<id>/
 ├── document_metadata.json    # S3 HEAD metadata + detected format
 ├── raw_text.txt              # Normalized text extracted from the document
 ├── llm_response.json         # Raw OpenAI response (model, usage, response_id)
+├── usage_metrics.json        # Normalized tokens, cache hit, estimated marginal cost
+├── llm_trace.json            # LLM-native run trace: prompt safety, cache, model call spans
 ├── result.json               # Validated, schema-conforming extraction
 └── status.json               # Final execution status + timing
 # error.json is written instead of result.json on failure
@@ -373,6 +388,14 @@ runs/payroll/v1/2026/04/19/req_<id>/
 | `TEXTRACT_REGION` | Lambda (PDF) | Region used for Textract sync APIs; default deploy sets `us-east-1` |
 | `ENABLE_VISION_FALLBACK` | Lambda (PDF) | Enables OpenAI Vision page transcription after Textract/text-layer failure |
 | `OPENAI_VISION_MODEL` | Lambda (PDF) | Vision model for PDF fallback (default deploy sets `gpt-4o`) |
+| `EXTRACTION_CACHE_TABLE` | Lambda (LLM) | DynamoDB cache table for same document/profile/model responses |
+| `ENABLE_LLM_CACHE` | Lambda (LLM) | Enables DynamoDB response cache |
+| `LLM_CACHE_TTL_DAYS` | Lambda (LLM) | Cache item TTL in days |
+| `ENABLE_LLM_CHUNKING` | Lambda (LLM) | Enables bounded map/merge extraction for large normalized text |
+| `MAX_SINGLE_PROMPT_CHARS` | Lambda (LLM) | Maximum document text size for a single model call |
+| `LLM_CHUNK_CHARS` | Lambda (LLM) | Maximum text size per chunk when chunking is enabled |
+| `MAX_LLM_CHUNKS` | Lambda (LLM) | Safety cap to prevent unbounded model cost |
+| `ENABLE_CONFIDENCE_GATE` | Lambda (ValidateSchema) | Fails low-confidence outputs when enabled |
 | `STATE_MACHINE_ARN` | Lambda (SubmitExtraction) | Target of `StartExecution` |
 | `PROFILES_ROOT` | Optional | Override the profiles directory for testing |
 | `STAGE_NAME` | Optional | Informational; set by the SAM template |

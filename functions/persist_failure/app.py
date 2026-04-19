@@ -31,6 +31,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "client_id": event.get("client_id"),
         "document_id": event.get("document_id"),
         "metadata": event.get("metadata", {}),
+        "llm_extraction": event.get("llm_extraction", {}),
         "error": error_payload,
         "artifacts": artifacts,
     }

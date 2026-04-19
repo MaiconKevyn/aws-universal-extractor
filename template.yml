@@ -57,6 +57,23 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
 
+  ExtractionCacheTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${AWS::StackName}-llm-cache"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: cache_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cache_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
   ExtractionApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -202,11 +219,22 @@ Resources:
       Handler: functions.run_llm_extraction.app.lambda_handler
       Timeout: 120
       MemorySize: 1024
+      Environment:
+        Variables:
+          EXTRACTION_CACHE_TABLE: !Ref ExtractionCacheTable
+          ENABLE_LLM_CACHE: "true"
+          LLM_CACHE_TTL_DAYS: "30"
+          ENABLE_LLM_CHUNKING: "true"
+          MAX_SINGLE_PROMPT_CHARS: "120000"
+          LLM_CHUNK_CHARS: "100000"
+          MAX_LLM_CHUNKS: "8"
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref DocumentsBucket
         - S3WritePolicy:
             BucketName: !Ref DocumentsBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExtractionCacheTable
         - Statement:
             - Effect: Allow
               Action:
@@ -219,6 +247,9 @@ Resources:
       BuildMethod: makefile
     Properties:
       Handler: functions.validate_schema.app.lambda_handler
+      Environment:
+        Variables:
+          ENABLE_CONFIDENCE_GATE: "false"
 
   PersistResultFunction:
     Type: AWS::Serverless::Function
@@ -392,10 +423,15 @@ Resources:
             Resource: !GetAtt RunLlmExtractionFunction.Arn
             Retry:
               - ErrorEquals:
-                  - States.ALL
+                  - OpenAIRetryableError
+                  - OpenAIResponseError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
                 IntervalSeconds: 3
-                MaxAttempts: 2
+                MaxAttempts: 4
                 BackoffRate: 2
+                JitterStrategy: FULL
             Catch:
               - ErrorEquals:
                   - States.ALL
@@ -433,3 +469,6 @@ Outputs:
   PayrollFixturesPrefix:
     Description: S3 prefix used by Jenkins to upload payroll fixtures
     Value: datasets/fixtures/payroll/
+  ExtractionCacheTableName:
+    Description: DynamoDB table used to deduplicate same document/profile/model LLM responses
+    Value: !Ref ExtractionCacheTable
