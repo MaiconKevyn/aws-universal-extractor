@@ -196,7 +196,7 @@ Resources:
         - LambdaInvokePolicy:
             FunctionName: !Ref PersistFailureFunction
       Definition:
-        Comment: Async PDF extraction pipeline
+        Comment: Async document extraction pipeline (multi-format via Choice routing)
         StartAt: FetchDocument
         States:
           FetchDocument:
@@ -215,7 +215,21 @@ Resources:
                   - States.ALL
                 ResultPath: $.error
                 Next: PersistFailure
-            Next: ExtractPdfText
+            Next: RouteByFormat
+          RouteByFormat:
+            Type: Choice
+            Choices:
+              - Variable: $.document_format
+                StringEquals: pdf
+                Next: ExtractPdfText
+            Default: UnsupportedFormat
+          UnsupportedFormat:
+            Type: Pass
+            Parameters:
+              Error: UnsupportedDocumentFormat
+              Cause.$: "States.Format('Unsupported document format: {}', $.document_format)"
+            ResultPath: $.error
+            Next: PersistFailure
           ExtractPdfText:
             Type: Task
             Resource: !GetAtt ExtractPdfTextFunction.Arn
