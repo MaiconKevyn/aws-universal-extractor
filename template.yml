@@ -118,13 +118,32 @@ Resources:
       BuildMethod: makefile
     Properties:
       Handler: functions.extract_pdf_text.app.lambda_handler
-      Timeout: 120
-      MemorySize: 1024
+      Timeout: 300
+      MemorySize: 2048
+      Environment:
+        Variables:
+          ENABLE_TEXTRACT: "true"
+          ENABLE_VISION_FALLBACK: "false"
+          OPENAI_VISION_MODEL: "gpt-4o"
+          TEXTRACT_REGION: "us-east-1"
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref DocumentsBucket
         - S3WritePolicy:
             BucketName: !Ref DocumentsBucket
+        - Statement:
+            - Sid: TextractSyncAccess
+              Effect: Allow
+              Action:
+                - textract:DetectDocumentText
+                - textract:AnalyzeDocument
+              Resource: "*"
+        - Statement:
+            - Sid: OpenAISecretRead
+              Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref OpenAIApiKeySecretArn
 
   ExtractXlsxTextFunction:
     Type: AWS::Serverless::Function

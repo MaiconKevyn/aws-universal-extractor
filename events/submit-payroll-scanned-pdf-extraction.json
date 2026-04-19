@@ -1,0 +1,17 @@
+{
+  "document": {
+    "bucket": "payroll-dev-498504717701-sa-east-1",
+    "key": "datasets/fixtures/payroll/pdf/paystub_006_scanned.pdf"
+  },
+  "extraction_profile": {
+    "id": "payroll",
+    "version": "v1"
+  },
+  "client_id": "internal",
+  "document_id": "paystub_006_scanned_pdf",
+  "idempotency_key": "internal-paystub-006-payroll-v1-scanned-pdf",
+  "metadata": {
+    "source_system": "jenkins_fixture",
+    "document_quality": "scanned"
+  }
+}

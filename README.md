@@ -17,7 +17,8 @@ The project is a reference implementation of the AI-Engineer playbook: LLMs as c
 - **Measurable accuracy.** Every fixture ships with a `.expected.json` ground-truth file. Current field-level accuracy on the payroll profile: **PDF 98.6% · XLSX 95.7% · CSV 100% · DOCX 98.6%**.
 
 **Format-agnostic ingestion**
-- One `payroll/v1` schema, four Lambdas (PyMuPDF, openpyxl, stdlib `csv`, python-docx), one consistent result shape. Adding a new format is one Lambda + one branch in the Step Functions `Choice` state — no schema change.
+- One `payroll/v1` schema, four extraction paths (multi-strategy PDF, openpyxl, stdlib `csv`, python-docx), one consistent result shape. Adding a new format is one Lambda + one branch in the Step Functions `Choice` state — no schema change.
+- PDFs are classified before extraction and routed through text-layer Markdown first, then AWS Textract OCR/table extraction for scanned or sparse documents, with an optional OpenAI Vision fallback.
 
 **Cloud-native architecture**
 - Async-by-default via **Step Functions Standard Workflow** (no long-running HTTP, no client polling assumptions).
@@ -43,7 +44,7 @@ flowchart LR
             direction TB
             Fetch["FetchDocument"]
             Route{"RouteByFormat"}
-            PDF["ExtractPdfText<br/>PyMuPDF"]
+            PDF["ExtractPdfText<br/>PyMuPDF4LLM + Textract"]
             XLSX["ExtractXlsxText<br/>openpyxl"]
             CSV["ExtractCsvText<br/>stdlib csv"]
             DOCX["ExtractDocxText<br/>python-docx"]
@@ -107,7 +108,7 @@ flowchart LR
 
 1. **Submit** — Client POSTs a document reference (`{bucket, key}`) plus a profile ID+version to API Gateway. `SubmitExtraction` assigns a `request_id`, derives the S3 output prefix, persists `input.json`, and starts a Step Functions execution. Returns `202 Accepted` with `execution_arn`.
 2. **Fetch & route** — `FetchDocument` does an S3 `HEAD`, detects format from extension + `Content-Type`, and persists `document_metadata.json`. `RouteByFormat` branches on `document_format`.
-3. **Extract text** — The format-specific Lambda pulls bytes from S3, normalizes to a single `raw_text.txt` using a pipe-delimited table convention (so tabular data from XLSX/CSV/DOCX looks uniform to the LLM).
+3. **Extract text** — The format-specific Lambda pulls bytes from S3 and normalizes to a single `raw_text.txt`. PDFs are classified and extracted with text-layer Markdown, Textract OCR/table extraction, or optional Vision fallback. XLSX/CSV/DOCX use a pipe-delimited table convention so tabular data looks uniform to the LLM.
 4. **Load profile** — `LoadExtractionProfile` reads `profiles/<id>/<version>.yml`, enforcing structural contracts (object schema, `additionalProperties: false`, required keys, prompt templates).
 5. **Extract with LLM** — `RunLLMExtraction` calls the OpenAI Responses API with `text.format = json_schema`, `strict=true`, and the exact schema from the profile. The Mustache-style user template (`{{document_text}}`, `{{metadata_json}}`, …) is rendered per request.
 6. **Validate** — Second-line defense: `jsonschema.Draft202012Validator` re-validates the response (Structured Outputs is strict, but we don't trust the wire). Business invariants (e.g. `employer.name` non-empty) are asserted here.
@@ -239,7 +240,7 @@ layers/common/python/app_common/
 functions/
   submit_extraction/            # API handler: start Step Functions execution
   fetch_document/               # S3 HEAD + format detection
-  extract_{pdf,xlsx,csv,docx}_text/   # Format-specific text extraction
+  extract_{pdf,xlsx,csv,docx}_text/   # Format-specific extraction; PDF is multi-strategy
   load_extraction_profile/      # Load versioned profile YAML
   run_llm_extraction/           # OpenAI call with Structured Outputs
   validate_schema/              # Second-line JSON Schema validation
@@ -368,6 +369,10 @@ runs/payroll/v1/2026/04/19/req_<id>/
 | `OPENAI_API_KEY` | Local only | Set in `.env` for local dev; bypasses Secrets Manager |
 | `OPENAI_MODEL` | Lambda + local | OpenAI model ID (e.g. `gpt-4.1-mini`) |
 | `OPENAI_BASE_URL` | Optional | Override for Azure OpenAI or proxies |
+| `ENABLE_TEXTRACT` | Lambda (PDF) | Enables Textract fallback/OCR for scanned or sparse PDFs |
+| `TEXTRACT_REGION` | Lambda (PDF) | Region used for Textract sync APIs; default deploy sets `us-east-1` |
+| `ENABLE_VISION_FALLBACK` | Lambda (PDF) | Enables OpenAI Vision page transcription after Textract/text-layer failure |
+| `OPENAI_VISION_MODEL` | Lambda (PDF) | Vision model for PDF fallback (default deploy sets `gpt-4o`) |
 | `STATE_MACHINE_ARN` | Lambda (SubmitExtraction) | Target of `StartExecution` |
 | `PROFILES_ROOT` | Optional | Override the profiles directory for testing |
 | `STAGE_NAME` | Optional | Informational; set by the SAM template |
@@ -376,7 +381,7 @@ runs/payroll/v1/2026/04/19/req_<id>/
 
 ## Roadmap
 
-- **OCR fallback for scanned PDFs.** Today PyMuPDF raises `DocumentExtractionError` when a PDF has no text layer. A Textract (or local Tesseract) branch in `RouteByFormat` is a natural extension.
+- **Async Textract for very large PDFs.** Current OCR uses synchronous Textract per rendered page for predictable Lambda execution. Long, high-volume documents should move to `StartDocumentAnalysis` with SNS/EventBridge orchestration.
 - **More profiles.** `invoice/v1`, `bank_statement/v1`, `purchase_order/v1` using the same profile shape.
 - **Automated evaluation.** Wire `smoke_test_formats.py` into CI so profile/prompt changes can't regress accuracy silently.
 - **Per-client profiles.** Namespace `profiles/<client_id>/<profile_id>/<version>.yml` to support client-specific schema variants.

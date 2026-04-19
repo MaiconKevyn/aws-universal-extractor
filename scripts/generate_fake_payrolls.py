@@ -170,8 +170,8 @@ def render_pdf(p: Paystub, out_path: Path) -> None:
 def render_scanned_pdf(p: Paystub, out_path: Path) -> None:
     """Render a text-based PDF, rasterize each page, reassemble as images.
 
-    Result is a PDF whose pages are images — PyMuPDF text extraction returns empty,
-    exactly the case that should trip DocumentExtractionError.
+    Result is a PDF whose pages are images. The PDF classifier should detect it
+    as scanned and route extraction to OCR instead of the text-layer strategy.
     """
     try:
         import fitz
