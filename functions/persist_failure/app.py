@@ -2,10 +2,22 @@ from typing import Any
 
 from app_common.config import get_settings
 from app_common.logging import get_logger, log_json
+from app_common.metrics import emit_extraction_failure
 from app_common.s3_utils import put_json, s3_uri
 
 
 logger = get_logger(__name__)
+
+
+def _failure_stage(error: dict[str, Any]) -> str:
+    """Best-effort extraction of which state caused the failure."""
+    cause = error.get("Cause") or error.get("cause") or ""
+    err = error.get("Error") or error.get("error") or ""
+    # Step Functions wraps Lambda errors as {"Error": "...", "Cause": "{\"errorType\":...}"}
+    for token in (err, cause):
+        if token:
+            return str(token)[:64]
+    return "unknown"
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -57,6 +69,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         request_id=event["request_id"],
         status_uri=s3_uri(output_bucket, status_key),
         error=error_payload,
+    )
+
+    # --- metrics ---
+    profile = event.get("extraction_profile") or {}
+    emit_extraction_failure(
+        fmt=event.get("document_format") or "unknown",
+        profile_id=profile.get("id", "unknown"),
+        failure_stage=_failure_stage(error_payload),
     )
 
     return event

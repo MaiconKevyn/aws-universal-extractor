@@ -79,7 +79,7 @@ Resources:
     Properties:
       StageName: !Ref StageName
       Cors:
-        AllowMethods: "'POST,OPTIONS'"
+        AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
 
@@ -116,6 +116,32 @@ Resources:
             RestApiId: !Ref ExtractionApi
             Path: /extractions
             Method: post
+
+  GetExtractionStatusFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.get_extraction_status.app.lambda_handler
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref DocumentExtractionStateMachine
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DocumentsBucket
+        - Statement:
+            - Sid: StepFunctionsDescribe
+              Effect: Allow
+              Action:
+                - states:DescribeExecution
+              Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}-document-extraction:*"
+      Events:
+        GetStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ExtractionApi
+            Path: /extractions/{request_id}
+            Method: get
 
   FetchDocumentFunction:
     Type: AWS::Serverless::Function
@@ -260,6 +286,12 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref DocumentsBucket
+        - Statement:
+            - Sid: CloudWatchMetrics
+              Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: "*"
 
   PersistFailureFunction:
     Type: AWS::Serverless::Function
@@ -270,6 +302,26 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref DocumentsBucket
+        - Statement:
+            - Sid: CloudWatchMetrics
+              Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: "*"
+
+  ValidateBusinessRulesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: functions.validate_business_rules.app.lambda_handler
+      Policies:
+        - Statement:
+            - Sid: CloudWatchMetrics
+              Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: "*"
 
   DocumentExtractionStateMachine:
     Type: AWS::Serverless::StateMachine
@@ -293,6 +345,8 @@ Resources:
             FunctionName: !Ref RunLlmExtractionFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref ValidateSchemaFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ValidateBusinessRulesFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref PersistResultFunction
         - LambdaInvokePolicy:
@@ -446,6 +500,15 @@ Resources:
                   - States.ALL
                 ResultPath: $.error
                 Next: PersistFailure
+            Next: ValidateBusinessRules
+          ValidateBusinessRules:
+            Type: Task
+            Resource: !GetAtt ValidateBusinessRulesFunction.Arn
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: PersistFailure
             Next: PersistResult
           PersistResult:
             Type: Task
@@ -455,6 +518,226 @@ Resources:
             Type: Task
             Resource: !GetAtt PersistFailureFunction.Arn
             End: true
+
+  # ── UI hosting (S3 + CloudFront) ──────────────────────────────────────────
+
+  UiBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-ui-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  UiOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-ui-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  UiBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref UiBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${UiBucket}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${UiDistribution}"
+
+  UiDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt UiBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !GetAtt UiOriginAccessControl.Id
+          - Id: ApiOrigin
+            DomainName: !Sub "${ExtractionApi}.execute-api.${AWS::Region}.amazonaws.com"
+            OriginPath: !Sub "/${StageName}"
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          # CachingOptimized managed policy
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CacheBehaviors:
+          - PathPattern: "/extractions*"
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            # CachingDisabled managed policy
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            # AllViewerExceptHostHeader — forwards all headers/QS/cookies but not Host
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+
+  # ── Alerting ──────────────────────────────────────────────────────────────
+
+  ExtractionAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-alerts"
+
+  ExtractionFailureRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-extraction-failure-rate"
+      AlarmDescription: "More than 5 extraction failures in 10 minutes"
+      Namespace: UniversalExtractor
+      MetricName: ExtractionFailure
+      Dimensions:
+        - Name: Stage
+          Value: !Ref StageName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref ExtractionAlertsTopic
+
+  ConfidenceScoreAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-low-confidence-score"
+      AlarmDescription: "Average LLM confidence score below 0.70 over 1 hour"
+      Namespace: UniversalExtractor
+      MetricName: ConfidenceScore
+      Dimensions:
+        - Name: Stage
+          Value: !Ref StageName
+      Statistic: Average
+      Period: 3600
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0.7
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref ExtractionAlertsTopic
+
+  BusinessRulesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-business-rules-pass-rate"
+      AlarmDescription: "Business rules pass rate below 95% over 1 hour"
+      Namespace: UniversalExtractor
+      MetricName: BusinessRulesPassed
+      Dimensions:
+        - Name: Stage
+          Value: !Ref StageName
+      Statistic: Average
+      Period: 3600
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0.95
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref ExtractionAlertsTopic
+
+  # ── Dashboard ──────────────────────────────────────────────────────────────
+
+  ExtractionDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${AWS::StackName}-extraction"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0, "y": 0, "width": 24, "height": 6,
+              "properties": {
+                "title": "Extraction Health — ${AWS::StackName}",
+                "view": "timeSeries",
+                "period": 300,
+                "metrics": [
+                  ["UniversalExtractor", "ExtractionSuccess",        "Stage", "${StageName}", {"stat": "Sum",     "label": "Success",      "color": "#2ca02c"}],
+                  ["UniversalExtractor", "ExtractionFailure",        "Stage", "${StageName}", {"stat": "Sum",     "label": "Failure",       "color": "#d62728"}],
+                  ["UniversalExtractor", "ExtractionDurationSeconds","Stage", "${StageName}", {"stat": "Average", "label": "Duration (s)",  "yAxis": "right"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "LLM Quality",
+                "view": "timeSeries",
+                "period": 3600,
+                "metrics": [
+                  ["UniversalExtractor", "ConfidenceScore",   "Stage", "${StageName}", {"stat": "Average", "label": "Avg Confidence",    "color": "#1f77b4"}],
+                  ["UniversalExtractor", "BusinessRulesPassed","Stage","${StageName}", {"stat": "Average", "label": "Rules Pass Rate",   "color": "#ff7f0e"}],
+                  ["UniversalExtractor", "BusinessRulesScore", "Stage","${StageName}", {"stat": "Average", "label": "Rules Score",       "color": "#9467bd"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "LLM Cost and Tokens",
+                "view": "timeSeries",
+                "period": 3600,
+                "metrics": [
+                  ["UniversalExtractor", "LLMCostUSD",     "Stage", "${StageName}", {"stat": "Sum", "label": "Cost (USD)"}],
+                  ["UniversalExtractor", "LLMInputTokens", "Stage", "${StageName}", {"stat": "Sum", "label": "Input Tokens",  "yAxis": "right"}],
+                  ["UniversalExtractor", "LLMOutputTokens","Stage", "${StageName}", {"stat": "Sum", "label": "Output Tokens", "yAxis": "right"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 12, "width": 24, "height": 6,
+              "properties": {
+                "title": "Pay Distribution",
+                "view": "timeSeries",
+                "period": 3600,
+                "metrics": [
+                  ["UniversalExtractor", "GrossPayValue",  "Stage", "${StageName}", {"stat": "p50",     "label": "GrossPay p50"}],
+                  ["UniversalExtractor", "GrossPayValue",  "Stage", "${StageName}", {"stat": "p95",     "label": "GrossPay p95",     "yAxis": "right"}],
+                  ["UniversalExtractor", "NetPayValue",    "Stage", "${StageName}", {"stat": "p50",     "label": "NetPay p50"}],
+                  ["UniversalExtractor", "FieldsNullCount","Stage", "${StageName}", {"stat": "Average", "label": "Avg Null Fields",  "yAxis": "right"}]
+                ]
+              }
+            }
+          ]
+        }
 
 Outputs:
   ExtractionApiUrl:
@@ -472,3 +755,15 @@ Outputs:
   ExtractionCacheTableName:
     Description: DynamoDB table used to deduplicate same document/profile/model LLM responses
     Value: !Ref ExtractionCacheTable
+  ExtractionAlertsTopicArn:
+    Description: SNS topic for CloudWatch alarm notifications
+    Value: !Ref ExtractionAlertsTopic
+  ExtractionDashboardUrl:
+    Description: CloudWatch dashboard URL
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home#dashboards:name=${AWS::StackName}-extraction"
+  UiUrl:
+    Description: CloudFront URL for the extraction UI
+    Value: !Sub "https://${UiDistribution.DomainName}"
+  UiBucketName:
+    Description: S3 bucket containing the UI static files (upload ui/index.html here)
+    Value: !Ref UiBucket

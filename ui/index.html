@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Universal Extractor</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+
+  header {
+    background: #1a1d27;
+    border-bottom: 1px solid #2d3148;
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 18px; font-weight: 600; color: #a78bfa; }
+  header span { font-size: 13px; color: #64748b; }
+
+  main {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 24px;
+    padding: 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  .card {
+    background: #1a1d27;
+    border: 1px solid #2d3148;
+    border-radius: 10px;
+    padding: 24px;
+  }
+  .card h2 { font-size: 14px; font-weight: 600; color: #94a3b8; text-transform: uppercase;
+              letter-spacing: .05em; margin-bottom: 20px; }
+
+  label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 4px; margin-top: 14px; }
+  label:first-of-type { margin-top: 0; }
+
+  input, select {
+    width: 100%; padding: 8px 12px;
+    background: #0f1117; border: 1px solid #2d3148; border-radius: 6px;
+    color: #e2e8f0; font-size: 14px; outline: none;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus { border-color: #7c3aed; }
+  input::placeholder { color: #475569; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  button {
+    margin-top: 20px; width: 100%; padding: 10px;
+    background: #7c3aed; border: none; border-radius: 6px;
+    color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+  }
+  button:hover:not(:disabled) { background: #6d28d9; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* status badge */
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  .badge.running  { background: #1e3a5f; color: #60a5fa; }
+  .badge.success  { background: #14532d; color: #4ade80; }
+  .badge.failed   { background: #450a0a; color: #f87171; }
+  .badge.idle     { background: #1e293b; color: #64748b; }
+
+  /* spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #60a5fa44; border-top-color: #60a5fa;
+    animation: spin .7s linear infinite;
+  }
+
+  /* result area */
+  #result-panel { min-height: 200px; }
+
+  .meta-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;
+  }
+  .info-item { background: #0f1117; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; }
+  .info-item .label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+  .info-item .value { font-size: 20px; font-weight: 700; color: #e2e8f0; margin-top: 2px; }
+  .info-item .value.green { color: #4ade80; }
+  .info-item .value.red   { color: #f87171; }
+  .info-item .value.amber { color: #fbbf24; }
+
+  details { margin-top: 12px; }
+  summary {
+    font-size: 13px; color: #7c3aed; cursor: pointer;
+    user-select: none; padding: 6px 0;
+  }
+  summary:hover { color: #a78bfa; }
+
+  pre {
+    background: #0f1117; border: 1px solid #2d3148; border-radius: 6px;
+    padding: 14px; font-size: 12px; overflow: auto; max-height: 480px;
+    color: #a5b4fc; margin-top: 8px; line-height: 1.6;
+  }
+
+  .violations { margin-top: 10px; }
+  .violation {
+    background: #450a0a; border: 1px solid #7f1d1d; border-radius: 4px;
+    padding: 6px 10px; font-size: 12px; color: #fca5a5; margin-bottom: 4px;
+  }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 60px 0; color: #334155; text-align: center;
+  }
+  .empty-state svg { margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; }
+
+  .error-box {
+    background: #450a0a; border: 1px solid #7f1d1d; border-radius: 6px;
+    padding: 14px; font-size: 13px; color: #fca5a5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/>
+    <line x1="16" y1="17" x2="8" y2="17"/>
+    <polyline points="10 9 9 9 8 9"/>
+  </svg>
+  <h1>Universal Extractor</h1>
+  <span>Async document extraction pipeline</span>
+</header>
+
+<main>
+  <!-- ── Left: submission form ─────────────────────── -->
+  <div class="card">
+    <h2>Submit Extraction</h2>
+
+    <label>Document bucket</label>
+    <input id="doc-bucket" type="text" placeholder="my-payroll-bucket">
+
+    <label>Document key (S3 path)</label>
+    <input id="doc-key" type="text" placeholder="documents/payslip.pdf">
+
+    <label>Document format</label>
+    <select id="doc-format">
+      <option value="pdf">PDF</option>
+      <option value="xlsx">XLSX</option>
+      <option value="csv">CSV</option>
+      <option value="docx">DOCX</option>
+    </select>
+
+    <div class="row">
+      <div>
+        <label>Profile ID</label>
+        <input id="profile-id" type="text" value="payroll_stub">
+      </div>
+      <div>
+        <label>Version</label>
+        <input id="profile-version" type="text" value="v1">
+      </div>
+    </div>
+
+    <label>Client ID <small style="color:#475569">(optional)</small></label>
+    <input id="client-id" type="text" placeholder="acme-corp">
+
+    <label>Document ID <small style="color:#475569">(optional)</small></label>
+    <input id="document-id" type="text" placeholder="slip-2024-01">
+
+    <button id="submit-btn" onclick="submitExtraction()">Extract Document</button>
+
+    <div id="submit-info" style="margin-top:14px;font-size:12px;color:#64748b;display:none"></div>
+  </div>
+
+  <!-- ── Right: result panel ───────────────────────── -->
+  <div class="card" id="result-panel">
+    <div class="meta-row">
+      <h2 style="margin:0">Extraction Result</h2>
+      <span id="status-badge" class="badge idle">Idle</span>
+    </div>
+
+    <div id="result-content">
+      <div class="empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <p>Submit a document to see the extraction result here.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API = '';  // relative — CloudFront routes /extractions* to API Gateway
+
+let _pollTimer = null;
+
+function stopPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+}
+
+function setBadge(status) {
+  const el = document.getElementById('status-badge');
+  el.className = 'badge ' + (status === 'RUNNING' ? 'running' : status === 'SUCCEEDED' ? 'success' : status === 'FAILED' ? 'failed' : 'idle');
+  el.innerHTML = status === 'RUNNING'
+    ? '<div class="spinner"></div> Running'
+    : status;
+}
+
+async function submitExtraction() {
+  const bucket  = document.getElementById('doc-bucket').value.trim();
+  const key     = document.getElementById('doc-key').value.trim();
+  const format  = document.getElementById('doc-format').value;
+  const profId  = document.getElementById('profile-id').value.trim();
+  const profVer = document.getElementById('profile-version').value.trim();
+  const clientId   = document.getElementById('client-id').value.trim();
+  const documentId = document.getElementById('document-id').value.trim();
+
+  if (!bucket || !key || !profId || !profVer) {
+    alert('Bucket, key, profile ID and version are required.');
+    return;
+  }
+
+  const payload = {
+    document: { bucket, key },
+    document_format: format,
+    extraction_profile: { id: profId, version: profVer },
+    ...(clientId   && { client_id: clientId }),
+    ...(documentId && { document_id: documentId }),
+  };
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  stopPolling();
+  setBadge('RUNNING');
+  setContent('<div class="empty-state"><div class="spinner" style="width:28px;height:28px;border-width:3px"></div><p style="margin-top:16px">Submitting…</p></div>');
+
+  try {
+    const res = await fetch(`${API}/extractions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showError(data.message || JSON.stringify(data));
+      btn.disabled = false; btn.textContent = 'Extract Document';
+      setBadge('FAILED');
+      return;
+    }
+
+    const { request_id, execution_arn, output_prefix } = data;
+    document.getElementById('submit-info').style.display = 'block';
+    document.getElementById('submit-info').innerHTML =
+      `<b>request_id:</b> ${request_id}<br><b>output_prefix:</b> ${output_prefix || '—'}`;
+
+    btn.textContent = 'Extract Document'; btn.disabled = false;
+    pollStatus(request_id);
+  } catch (err) {
+    showError(err.message);
+    btn.disabled = false; btn.textContent = 'Extract Document';
+    setBadge('FAILED');
+  }
+}
+
+function pollStatus(requestId) {
+  setContent('<div class="empty-state"><div class="spinner" style="width:28px;height:28px;border-width:3px"></div><p style="margin-top:16px">Processing…</p></div>');
+  setBadge('RUNNING');
+
+  async function tick() {
+    try {
+      const res = await fetch(`${API}/extractions/${requestId}`);
+      const data = await res.json();
+      const status = data.status;
+
+      if (status === 'RUNNING') return;  // keep polling
+
+      stopPolling();
+      setBadge(status);
+      if (status === 'SUCCEEDED') renderResult(data);
+      else renderFailed(data);
+    } catch (err) {
+      // network blip — keep polling silently
+    }
+  }
+
+  tick();
+  _pollTimer = setInterval(tick, 2500);
+}
+
+function renderResult(data) {
+  const ed = data.extracted_data || data.result || {};
+  const totals = ed.totals || {};
+  const br = data.business_rules || {};
+  const llm = data.llm || {};
+  const conf = (llm.confidence || {}).score;
+  const score = br.score;
+  const violations = br.violations || [];
+
+  function colorScore(v) {
+    if (v === undefined || v === null) return '';
+    return v >= 0.9 ? 'green' : v >= 0.7 ? 'amber' : 'red';
+  }
+
+  const infoItems = [
+    { label: 'Gross Pay',       value: totals.gross_pay != null ? fmt(totals.gross_pay) : '—' },
+    { label: 'Net Pay',         value: totals.net_pay   != null ? fmt(totals.net_pay)   : '—' },
+    { label: 'Confidence',      value: conf  != null ? (conf * 100).toFixed(1) + '%'   : '—', cls: colorScore(conf) },
+    { label: 'Business Rules',  value: score != null ? (score * 100).toFixed(0) + '%'  : '—', cls: colorScore(score) },
+  ];
+
+  let html = '<div class="info-grid">' + infoItems.map(i =>
+    `<div class="info-item"><div class="label">${i.label}</div><div class="value ${i.cls||''}">${i.value}</div></div>`
+  ).join('') + '</div>';
+
+  if (violations.length) {
+    html += `<div class="violations">`;
+    html += `<div style="font-size:12px;color:#94a3b8;margin-bottom:6px">⚠ ${violations.length} business rule violation(s)</div>`;
+    violations.forEach(v => { html += `<div class="violation">${escHtml(v)}</div>`; });
+    html += '</div>';
+  }
+
+  html += `<details><summary>Extracted data (JSON)</summary><pre>${escHtml(JSON.stringify(ed, null, 2))}</pre></details>`;
+  html += `<details><summary>Full response</summary><pre>${escHtml(JSON.stringify(data, null, 2))}</pre></details>`;
+
+  setContent(html);
+}
+
+function renderFailed(data) {
+  const msg = data.cause || data.error || data.message || JSON.stringify(data);
+  setContent(`<div class="error-box"><b>Extraction failed</b><br><br>${escHtml(typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2))}</div>
+    <details style="margin-top:10px"><summary>Full response</summary><pre>${escHtml(JSON.stringify(data, null, 2))}</pre></details>`);
+}
+
+function showError(msg) {
+  setContent(`<div class="error-box">${escHtml(msg)}</div>`);
+}
+
+function setContent(html) {
+  document.getElementById('result-content').innerHTML = html;
+}
+
+function fmt(n) {
+  return typeof n === 'number'
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+    : String(n);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

@@ -55,7 +55,25 @@ Every Lambda uses `BuildMethod: makefile` and shares `CodeUri: .` at the repo ro
 
 ### State machine flow (`template.yml`)
 
-`SubmitExtraction` (API, POST /extractions) → start execution → `FetchDocument` → `RouteByFormat` → `ExtractPdfText`, `ExtractXlsxText`, `ExtractCsvText`, or `ExtractDocxText` → `LoadExtractionProfile` → `RunLlmExtraction` → `ValidateSchema` → `PersistResult`. Every task has a `Catch: States.ALL → PersistFailure` with `ResultPath: $.error`. The state input is augmented by `SubmitExtraction` with `request_id`, `submitted_at`, and `artifacts.{input_document_uri, output_bucket, output_prefix, run_uri, input}`; each downstream step mutates and forwards this object, appending `artifacts.document_metadata`, `artifacts.raw_text`, `resolved_profile`, `llm_extraction`, etc. PyMuPDF raises `DocumentExtractionError` on scanned PDFs — there is no OCR fallback yet.
+`SubmitExtraction` (API, POST /extractions) → start execution → `FetchDocument` → `RouteByFormat` → `ExtractPdfText`, `ExtractXlsxText`, `ExtractCsvText`, or `ExtractDocxText` → `LoadExtractionProfile` → `RunLlmExtraction` → `ValidateSchema` → `PersistResult`. Every task has a `Catch: States.ALL → PersistFailure` with `ResultPath: $.error`. The state input is augmented by `SubmitExtraction` with `request_id`, `submitted_at`, and `artifacts.{input_document_uri, output_bucket, output_prefix, run_uri, input}`; each downstream step mutates and forwards this object, appending `artifacts.document_metadata`, `artifacts.raw_text`, `resolved_profile`, `llm_extraction`, etc.
+
+### PDF multi-strategy extraction (`functions/extract_pdf_text/`)
+
+`ExtractPdfText` is a multi-strategy pipeline with automatic fallback:
+
+1. **Classify** (`classifier.py`) — inspects the PDF before choosing a strategy. Detects: `is_scanned` (avg < 50 chars/page), `is_sparse` (avg < 200 chars/page), `is_encrypted`, `is_corrupted`, `has_tables`.
+
+2. **Strategy chain** (`app.py:_choose_strategy_chain`) — picks strategies based on classification and env toggles:
+   - Scanned PDF → `[textract, vision]` (skips text layer entirely)
+   - Normal/sparse PDF → `[text_layer, textract, vision]`
+   - Each strategy is tried in order; on `StrategyError` the next one runs.
+
+3. **Strategies** (`strategies.py`):
+   - `text_layer` — PyMuPDF + pymupdf4llm → Markdown. Always attempted first for non-scanned PDFs.
+   - `textract` — renders each page to PNG at 220 DPI → `AnalyzeDocument` (TABLES + FORMS). On by default (`ENABLE_TEXTRACT=true`). **Textract is not available in `sa-east-1`** — set `TEXTRACT_REGION` to a supported region (e.g. `us-east-1`). Currently uses sync per-page calls; async (`StartDocumentAnalysis` + SNS) is the right pattern for documents > 20 pages.
+   - `vision` — renders each page to PNG → OpenAI vision model (`OPENAI_VISION_MODEL`, default `gpt-4o`) transcribes to Markdown. Off by default (`ENABLE_VISION_FALLBACK=false`).
+
+4. **Output** — concatenated Markdown with page headers (`=== Page N (method) ===`); rich `pdf_extraction` metadata attached to the event for observability.
 
 ### Extraction profiles
 
@@ -69,3 +87,5 @@ Versioned YAML at `profiles/<id>/<version>.yml` (e.g. `profiles/cash_requirement
 ## Environment variables
 
 Required at runtime: `DOCUMENTS_BUCKET_NAME`, `OPENAI_API_KEY_SECRET_ARN` (or `OPENAI_API_KEY` for local dev via `.env`), `OPENAI_MODEL`, `STATE_MACHINE_ARN`. Optional: `PROFILES_ROOT`, `OPENAI_BASE_URL`, `STAGE_NAME`.
+
+PDF extraction toggles: `ENABLE_TEXTRACT` (default `true`), `ENABLE_VISION_FALLBACK` (default `false`), `TEXTRACT_REGION` (required if deploying to a region without Textract, e.g. `sa-east-1`), `OPENAI_VISION_MODEL` (default `gpt-4o`).

@@ -173,5 +173,39 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy UI') {
+            when {
+                expression { params.DEPLOY_ENABLED }
+            }
+            steps {
+                sh '''
+                    set -eux
+
+                    stack_name="${STACK_NAME:-universal-extractor-dev}"
+                    ui_bucket="$(./.venv/bin/aws cloudformation describe-stacks \
+                      --stack-name "$stack_name" \
+                      --region "$AWS_DEFAULT_REGION" \
+                      --query "Stacks[0].Outputs[?OutputKey=='UiBucketName'].OutputValue | [0]" \
+                      --output text)"
+
+                    if [ -z "$ui_bucket" ] || [ "$ui_bucket" = "None" ]; then
+                      echo "Could not resolve UiBucketName from CloudFormation outputs."
+                      exit 1
+                    fi
+
+                    ./.venv/bin/aws s3 cp ui/index.html "s3://$ui_bucket/index.html" \
+                      --region "$AWS_DEFAULT_REGION" \
+                      --content-type "text/html"
+
+                    ui_url="$(./.venv/bin/aws cloudformation describe-stacks \
+                      --stack-name "$stack_name" \
+                      --region "$AWS_DEFAULT_REGION" \
+                      --query "Stacks[0].Outputs[?OutputKey=='UiUrl'].OutputValue | [0]" \
+                      --output text)"
+                    echo "UI deployed: $ui_url"
+                '''
+            }
+        }
     }
 }

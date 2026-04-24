@@ -3,6 +3,7 @@ RUNTIME_DEPS_DIR := $(PROJECT_ROOT)/.aws-sam/runtime-deps
 
 .PHONY: \
 	build-SubmitExtractionFunction \
+	build-GetExtractionStatusFunction \
 	build-FetchDocumentFunction \
 	build-ExtractPdfTextFunction \
 	build-ExtractXlsxTextFunction \
@@ -11,6 +12,7 @@ RUNTIME_DEPS_DIR := $(PROJECT_ROOT)/.aws-sam/runtime-deps
 	build-LoadExtractionProfileFunction \
 	build-RunLlmExtractionFunction \
 	build-ValidateSchemaFunction \
+	build-ValidateBusinessRulesFunction \
 	build-PersistResultFunction \
 	build-PersistFailureFunction
 
@@ -23,6 +25,9 @@ define build_lambda
 endef
 
 build-SubmitExtractionFunction:
+	$(build_lambda)
+
+build-GetExtractionStatusFunction:
 	$(build_lambda)
 
 build-FetchDocumentFunction:
@@ -47,6 +52,9 @@ build-RunLlmExtractionFunction:
 	$(build_lambda)
 
 build-ValidateSchemaFunction:
+	$(build_lambda)
+
+build-ValidateBusinessRulesFunction:
 	$(build_lambda)
 
 build-PersistResultFunction:
