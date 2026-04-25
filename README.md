@@ -4,7 +4,7 @@
 
 Unstructured business documents (payslips, invoices, statements, forms) are the last mile of data engineering. Universal Extractor solves that last mile with a format-agnostic pipeline where a single versioned "extraction profile" (prompt + JSON Schema) deterministically governs what the LLM returns — no free-form parsing, no regex cleanup, no drift between runs.
 
-The project is a reference implementation of the AI-Engineer playbook: LLMs as constrained function callers, strict schemas as contracts, ground-truth fixtures as tests, and a cost-aware, auditable cloud architecture around the model call.
+The project is a reference implementation of the AI-Engineer playbook: LLMs as constrained function callers, strict schemas as contracts, domain-aware business rule validation, ground-truth fixtures as offline benchmarks, online CloudWatch monitoring, and a cost-aware, auditable cloud architecture around the model call.
 
 ---
 
@@ -15,18 +15,21 @@ The project is a reference implementation of the AI-Engineer playbook: LLMs as c
 - **Versioned prompt/schema pairs.** Every profile is `profiles/<id>/<version>.yml`. Changes ship as a new version — old executions stay reproducible.
 - **Domain-aware prompting.** The payroll profile ships a taxonomy (earnings vs. deductions), number/date normalization rules (US `1,234.56` → `1234.56`, `MM/DD/YYYY` → `YYYY-MM-DD`), and nullability discipline (never invent values).
 - **Measurable accuracy.** Every fixture ships with a `.expected.json` ground-truth file. Current field-level accuracy on the payroll profile: **PDF 98.6% · XLSX 95.7% · CSV 100% · DOCX 98.6%**.
-- **Production controls around the model call.** LLM runs now include prompt-injection boundaries, retryable/non-retryable error taxonomy, optional chunking for long documents, confidence scoring, token/cost metrics, trace artifacts, and DynamoDB cache deduplication.
+- **Production controls around the model call.** LLM runs include prompt-injection boundaries, retryable/non-retryable error taxonomy, optional chunking for long documents, confidence scoring, token/cost metrics, trace artifacts, and DynamoDB cache deduplication.
+- **Domain-level business rule validation.** A dedicated `ValidateBusinessRules` Lambda (inserted after JSON Schema validation) enforces 7 payroll invariants — numeric sanity, math consistency, and required-field presence — that schema validation cannot express. Violations are recorded in the result, not fatal, so every run is fully auditable.
+- **Online monitoring.** CloudWatch custom metrics (`UniversalExtractor` namespace) track extraction success/failure rates, LLM confidence, business rules pass rate, cost per run, and pay value distributions. Three SNS-backed alarms alert on failure spikes, confidence drops, and sustained rule violations. A 4-panel dashboard is provisioned by the SAM template.
 
 **Format-agnostic ingestion**
 - One `payroll/v1` schema, four extraction paths (multi-strategy PDF, openpyxl, stdlib `csv`, python-docx), one consistent result shape. Adding a new format is one Lambda + one branch in the Step Functions `Choice` state — no schema change.
 - PDFs are classified before extraction and routed through text-layer Markdown first, then AWS Textract OCR/table extraction for scanned or sparse documents, with an optional OpenAI Vision fallback.
 
 **Cloud-native architecture**
-- Async-by-default via **Step Functions Standard Workflow** (no long-running HTTP, no client polling assumptions).
+- Async-by-default via **Step Functions Standard Workflow** (no long-running HTTP, no client polling assumptions). `GET /extractions/{request_id}` closes the async loop — the endpoint reconstructs the execution ARN from `request_id`, calls `DescribeExecution`, and returns the richer S3 payload once done.
 - Every task catches `States.ALL` and routes to `PersistFailure` — failed runs produce an auditable `error.json`, not silent drops.
-- **Per-run S3 artifact tree** under `runs/<profile>/<version>/<YYYY>/<MM>/<DD>/<request_id>/`: input, metadata, raw text, raw LLM response, validated result, status. Debuggable post-hoc without log diving.
+- **Per-run S3 artifact tree** under `runs/<profile>/<version>/<YYYY>/<MM>/<DD>/<request_id>/`: input, metadata, raw text, raw LLM response, validated result, business rules report, status. Debuggable post-hoc without log diving.
 - **Secrets Manager** for the OpenAI key — never in code, never in env files at rest.
-- **Infrastructure as Code** via AWS SAM; **CI/CD** via a Jenkins pipeline with preflight, validate, build, deploy, and fixture-sync stages.
+- **Infrastructure as Code** via AWS SAM; **CI/CD** via a Jenkins pipeline with preflight, validate, build, deploy, fixture-sync, and UI-deploy stages.
+- **Static SPA** (`ui/index.html`) hosted on S3 + CloudFront. CloudFront routes `/extractions*` to API Gateway (with origin path `/{stage}`) and the default behavior to S3 — the UI uses relative URLs and requires no build step.
 
 ---
 
@@ -35,11 +38,13 @@ The project is a reference implementation of the AI-Engineer playbook: LLMs as c
 ```mermaid
 flowchart LR
     Client([Client])
+    UI["SPA UI<br/>(CloudFront + S3)"]
 
     subgraph AWS["AWS Cloud — sa-east-1"]
         direction LR
-        APIGW["API Gateway<br/>POST /extractions"]
+        APIGW["API Gateway<br/>POST /extractions<br/>GET /extractions/{id}"]
         Submit["SubmitExtraction<br/>(Lambda)"]
+        GetStatus["GetExtractionStatus<br/>(Lambda)"]
 
         subgraph SFN["Step Functions · Standard Workflow"]
             direction TB
@@ -52,6 +57,7 @@ flowchart LR
             Load["LoadExtractionProfile"]
             LLM["RunLLMExtraction"]
             Validate["ValidateSchema"]
+            BizRules["ValidateBusinessRules"]
             Persist["PersistResult"]
             Fail["PersistFailure"]
 
@@ -66,18 +72,24 @@ flowchart LR
             DOCX --> Load
             Load --> LLM
             LLM --> Validate
-            Validate --> Persist
+            Validate --> BizRules
+            BizRules --> Persist
             Validate -.->|on error| Fail
+            BizRules -.->|on error| Fail
         end
 
         S3[("S3 Bucket<br/>datasets/ · runs/")]
+        UiS3[("S3 Bucket<br/>UI static files")]
         Secrets[("Secrets Manager<br/>OpenAI API Key")]
+        CW["CloudWatch<br/>Metrics · Alarms · Dashboard"]
     end
 
     OpenAI["OpenAI<br/>Responses API<br/>Structured Outputs"]
 
+    UI -->|"poll GET /extractions/{id}"| APIGW
     Client -->|"1. HTTPS POST"| APIGW
     APIGW --> Submit
+    APIGW --> GetStatus
     Submit -->|"2. StartExecution"| Fetch
     Submit -.->|write input.json| S3
     Fetch -.->|HEAD object| S3
@@ -87,8 +99,13 @@ flowchart LR
     DOCX -.-> S3
     LLM -.->|fetch key| Secrets
     LLM <==>|"3. Structured Outputs<br/>JSON Schema strict"| OpenAI
-    Persist -.->|result.json<br/>status.json| S3
+    Persist -.->|result.json · status.json| S3
+    Persist -.->|metrics| CW
+    BizRules -.->|metrics| CW
     Fail -.->|error.json| S3
+    Fail -.->|metrics| CW
+    GetStatus -.->|DescribeExecution + read status.json| S3
+    UiS3 -.->|serves index.html| UI
 
     classDef aws fill:#232F3E,stroke:#FF9900,stroke-width:2px,color:#fff
     classDef lambda fill:#FF9900,stroke:#232F3E,color:#000
@@ -96,12 +113,14 @@ flowchart LR
     classDef sec fill:#DD344C,stroke:#232F3E,color:#fff
     classDef ext fill:#10a37f,stroke:#232F3E,color:#fff
     classDef client fill:#fff,stroke:#232F3E,color:#000
+    classDef monitor fill:#1a73e8,stroke:#232F3E,color:#fff
 
-    class APIGW,Submit,Fetch,Route,PDF,XLSX,CSV,DOCX,Load,LLM,Validate,Persist,Fail lambda
-    class S3 storage
+    class APIGW,Submit,GetStatus,Fetch,Route,PDF,XLSX,CSV,DOCX,Load,LLM,Validate,BizRules,Persist,Fail lambda
+    class S3,UiS3 storage
     class Secrets sec
     class OpenAI ext
-    class Client client
+    class Client,UI client
+    class CW monitor
     class AWS,SFN aws
 ```
 
@@ -112,8 +131,10 @@ flowchart LR
 3. **Extract text** — The format-specific Lambda pulls bytes from S3 and normalizes to a single `raw_text.txt`. PDFs are classified and extracted with text-layer Markdown, Textract OCR/table extraction, or optional Vision fallback. XLSX/CSV/DOCX use a pipe-delimited table convention so tabular data looks uniform to the LLM.
 4. **Load profile** — `LoadExtractionProfile` reads `profiles/<id>/<version>.yml`, enforcing structural contracts (object schema, `additionalProperties: false`, required keys, prompt templates).
 5. **Extract with LLM** — `RunLLMExtraction` calls the OpenAI Responses API with `text.format = json_schema`, `strict=true`, and the exact schema from the profile. The Mustache-style user template (`{{document_text}}`, `{{metadata_json}}`, …) is rendered per request.
-6. **Validate** — Second-line defense: `jsonschema.Draft202012Validator` re-validates the response (Structured Outputs is strict, but we don't trust the wire). Business invariants (e.g. `employer.name` non-empty) are asserted here.
-7. **Persist** — `PersistResult` (or `PersistFailure` via a `States.ALL` catch) writes `result.json` / `status.json` / `error.json` under the run prefix.
+6. **Validate schema** — Second-line defense: `jsonschema.Draft202012Validator` re-validates the response (Structured Outputs is strict, but we don't trust the wire).
+7. **Validate business rules** — `ValidateBusinessRules` checks 7 payroll domain invariants that the JSON Schema cannot express: numeric sanity (`gross > net`, both positive), math consistency (`|gross - deductions - net| / gross < 2%`), and required-field presence. Violations are recorded, not fatal — the pipeline always reaches `PersistResult`.
+8. **Persist** — `PersistResult` (or `PersistFailure` via a `States.ALL` catch) writes `result.json` / `status.json` / `error.json` under the run prefix and emits CloudWatch metrics.
+9. **Poll for result** — `GET /extractions/{request_id}` reconstructs the execution ARN, calls `DescribeExecution`, and returns the S3 payload. Returns `202` while running, `200` on any terminal state.
 
 ---
 
@@ -147,11 +168,21 @@ Response:
 }
 ```
 
-Fetch the result when the execution succeeds:
+Poll for the result (returns `202` while running, `200` when done):
+
+```bash
+curl "https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/extractions/req_5b51cc1e029b4c3bbd63538e"
+```
+
+Or fetch the S3 artifact directly once the execution succeeds:
 
 ```bash
 aws s3 cp s3://<bucket>/runs/payroll/v1/2026/04/19/<request_id>/result.json -
 ```
+
+### Use the web UI
+
+After deploy, the `UiUrl` CloudFormation output gives the CloudFront HTTPS URL. Open it in a browser, fill in the document bucket/key and profile, and submit — the UI polls automatically and renders the extraction result with confidence score and business rules report.
 
 ### Run an extraction locally
 
@@ -245,19 +276,25 @@ Jenkinsfile                     # Preflight → Build → Validate → Deploy �
 
 layers/common/python/app_common/
   config.py                     # Settings, Secrets Manager loader
+  metrics.py                    # CloudWatch fire-and-forget metrics (Stage+Format+Profile dims + Stage agg)
   openai_client.py              # Responses API wrapper with Structured Outputs
   profiles.py                   # Profile loader + schema contract enforcement
   s3_utils.py                   # S3 helpers, output prefix derivation
   validators.py                 # Schema validation + business invariants
 
 functions/
-  submit_extraction/            # API handler: start Step Functions execution
+  submit_extraction/            # POST /extractions — start Step Functions execution
+  get_extraction_status/        # GET /extractions/{request_id} — poll execution status
   fetch_document/               # S3 HEAD + format detection
   extract_{pdf,xlsx,csv,docx}_text/   # Format-specific extraction; PDF is multi-strategy
   load_extraction_profile/      # Load versioned profile YAML
   run_llm_extraction/           # OpenAI call with Structured Outputs
   validate_schema/              # Second-line JSON Schema validation
-  persist_{result,failure}/     # S3 persistence
+  validate_business_rules/      # 7 payroll domain invariants (numeric sanity, math, required fields)
+  persist_{result,failure}/     # S3 persistence + CloudWatch metrics
+
+ui/
+  index.html                    # SPA: submit form, 2.5 s polling, result renderer (served via CloudFront)
 
 profiles/
   payroll/v1.yml                # US payroll / pay stub profile
@@ -328,7 +365,15 @@ Relevant parameters:
 
 ### Jenkins (CI/CD)
 
-The `Jenkinsfile` runs: `Checkout → Preflight → Prepare Python → Resolve AWS Identity → sam validate → sam build → Deploy → Sync Payroll Fixtures`. The fixture-sync stage uploads `tests/fixtures/payroll/{pdf,xlsx,csv,docx}` to `datasets/fixtures/payroll/` in the deployed bucket so end-to-end API tests have data to hit.
+The `Jenkinsfile` runs: `Checkout → Preflight → Prepare Python → Resolve AWS Identity → sam validate → sam build → Deploy → Sync Payroll Fixtures → Deploy UI`. The fixture-sync stage uploads `tests/fixtures/payroll/{pdf,xlsx,csv,docx}` to `datasets/fixtures/payroll/` in the deployed bucket. The Deploy UI stage reads the `UiBucketName` CloudFormation output and uploads `ui/index.html` with the correct `Content-Type`.
+
+After a successful deploy, three CloudFormation outputs are particularly useful:
+
+| Output | Purpose |
+|--------|---------|
+| `UiUrl` | CloudFront HTTPS URL for the extraction SPA |
+| `ExtractionDashboardUrl` | Direct link to the CloudWatch 4-panel dashboard |
+| `ExtractionAlertsTopicArn` | SNS topic ARN — subscribe an email in the console to receive alarm notifications |
 
 ---
 
@@ -357,6 +402,18 @@ The `Jenkinsfile` runs: `Checkout → Preflight → Prepare Python → Resolve A
   "output_prefix": "s3://<bucket>/runs/payroll/v1/YYYY/MM/DD/req_<id>"
 }
 ```
+
+### GET /extractions/{request_id}
+
+Poll this endpoint until the status is no longer `RUNNING`.
+
+| HTTP status | Meaning |
+|-------------|---------|
+| `202` | Execution still running |
+| `200` | Terminal state — `status` field is `SUCCEEDED` or `FAILED` |
+| `404` | Execution not found |
+
+`200 SUCCEEDED` response body is the full `status.json` from S3 (includes `result_uri`, `extracted_data` summary, `business_rules`, `llm` metadata). `200 FAILED` returns `error.json` when available.
 
 ### Run artifacts (S3)
 
@@ -406,8 +463,9 @@ runs/payroll/v1/2026/04/19/req_<id>/
 
 - **Async Textract for very large PDFs.** Current OCR uses synchronous Textract per rendered page for predictable Lambda execution. Long, high-volume documents should move to `StartDocumentAnalysis` with SNS/EventBridge orchestration.
 - **More profiles.** `invoice/v1`, `bank_statement/v1`, `purchase_order/v1` using the same profile shape.
-- **Automated evaluation.** Wire `smoke_test_formats.py` into CI so profile/prompt changes can't regress accuracy silently.
+- **Automated evaluation in CI.** Wire `smoke_test_formats.py` into Jenkins so profile/prompt changes can't regress accuracy silently.
 - **Per-client profiles.** Namespace `profiles/<client_id>/<profile_id>/<version>.yml` to support client-specific schema variants.
+- **LLM-as-Judge for open-ended fields.** Use a secondary model call to rate free-text fields (e.g. employer address formatting) that numeric confidence scores miss.
 
 ---
 

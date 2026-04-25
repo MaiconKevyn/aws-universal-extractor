@@ -52,10 +52,17 @@ Every Lambda uses `BuildMethod: makefile` and shares `CodeUri: .` at the repo ro
 - `openai_client.py` — wraps the OpenAI **Responses API** with `text.format = json_schema` (Structured Outputs). Renders `{{var}}` placeholders in `prompt.user_template`. `strict` defaults to `profile.validation.strict_schema` (default true).
 - `validators.py` — `validate_submission_payload` gates the API handler; `to_metadata_json` prepares metadata for prompt injection.
 - `exceptions.py` — domain errors (`RequestValidationError`, `ProfileNotFoundError`, `ProfileValidationError`, `DocumentExtractionError`, etc.).
+- `metrics.py` — fire-and-forget CloudWatch metrics module; never raises. Emits two series per metric: `Stage+Format+Profile` dimensions (detailed dashboards) and `Stage`-only aggregate (alarms and overview panels). Three public functions: `emit_extraction_success`, `emit_extraction_failure`, `emit_business_rules`.
 
 ### State machine flow (`template.yml`)
 
-`SubmitExtraction` (API, POST /extractions) → start execution → `FetchDocument` → `RouteByFormat` → `ExtractPdfText`, `ExtractXlsxText`, `ExtractCsvText`, or `ExtractDocxText` → `LoadExtractionProfile` → `RunLlmExtraction` → `ValidateSchema` → `PersistResult`. Every task has a `Catch: States.ALL → PersistFailure` with `ResultPath: $.error`. The state input is augmented by `SubmitExtraction` with `request_id`, `submitted_at`, and `artifacts.{input_document_uri, output_bucket, output_prefix, run_uri, input}`; each downstream step mutates and forwards this object, appending `artifacts.document_metadata`, `artifacts.raw_text`, `resolved_profile`, `llm_extraction`, etc.
+`SubmitExtraction` (API, `POST /extractions`) → start execution → `FetchDocument` → `RouteByFormat` → `ExtractPdfText`, `ExtractXlsxText`, `ExtractCsvText`, or `ExtractDocxText` → `LoadExtractionProfile` → `RunLlmExtraction` → `ValidateSchema` → `ValidateBusinessRules` → `PersistResult`. Every task has a `Catch: States.ALL → PersistFailure` with `ResultPath: $.error`. The state input is augmented by `SubmitExtraction` with `request_id`, `submitted_at`, and `artifacts.{input_document_uri, output_bucket, output_prefix, run_uri, input}`; each downstream step mutates and forwards this object, appending `artifacts.document_metadata`, `artifacts.raw_text`, `resolved_profile`, `llm_extraction`, `validation`, `business_rules`, etc.
+
+`GetExtractionStatus` (API, `GET /extractions/{request_id}`) reconstructs the execution ARN from `request_id` (the execution name is the sanitized `request_id`), calls `DescribeExecution`, and returns the richer `status.json` or `error.json` from S3 once the execution finishes. Returns 202 while RUNNING, 200 on terminal states, 404 if the execution does not exist.
+
+### Business rules validation (`functions/validate_business_rules/`)
+
+Runs after `ValidateSchema` (JSON structure check) and before `PersistResult`. Checks 7 payroll invariants that JSON Schema cannot express: `gross_pay > 0`, `net_pay > 0`, `gross >= net`, math check `|gross - deductions - net| / gross < 2%`, `employer.name` present, `employee.name` present, `pay_period` dates present. Violations are **recorded, not fatal** — the pipeline always reaches `PersistResult`, and `result.json` includes `business_rules.{passed, score, violations, rules_checked}`.
 
 ### PDF multi-strategy extraction (`functions/extract_pdf_text/`)
 
@@ -81,11 +88,12 @@ Versioned YAML at `profiles/<id>/<version>.yml` (e.g. `profiles/cash_requirement
 
 ## Deployment
 
-- Jenkins pipeline (`Jenkinsfile`) runs Checkout → Preflight (needs `python3.13`) → Prepare Python (builds `.aws-sam/runtime-deps`) → Resolve AWS Identity → `sam validate` → `sam build` → Deploy → optional fixture sync. Deploy requires `OPENAI_API_KEY_SECRET_ARN` (must match `arn:aws:secretsmanager:*`) and uses `--resolve-s3` unless `SAM_S3_BUCKET` is set. Fixture sync uploads local `tests/fixtures/payroll/{pdf,xlsx,csv,docx}` into `datasets/fixtures/payroll/{pdf,xlsx,csv,docx}` in the deployed documents bucket.
+- Jenkins pipeline (`Jenkinsfile`) runs Checkout → Preflight (needs `python3.13`) → Prepare Python (builds `.aws-sam/runtime-deps`) → Resolve AWS Identity → `sam validate` → `sam build` → Deploy → Sync Payroll Fixtures → **Deploy UI**. Deploy requires `OPENAI_API_KEY_SECRET_ARN` (must match `arn:aws:secretsmanager:*`) and uses `--resolve-s3` unless `SAM_S3_BUCKET` is set. The Deploy UI stage reads the `UiBucketName` CloudFormation output and uploads `ui/index.html` with `Content-Type: text/html`.
 - A local Jenkins setup lives under `universal-extractor-jenkins/` (gitignored).
+- After deploy, CloudFormation outputs include `UiUrl` (CloudFront HTTPS URL for the SPA), `ExtractionDashboardUrl` (CloudWatch dashboard direct link), and `ExtractionAlertsTopicArn` (SNS topic for alarm notifications — subscribe an email via the console).
 
 ## Environment variables
 
-Required at runtime: `DOCUMENTS_BUCKET_NAME`, `OPENAI_API_KEY_SECRET_ARN` (or `OPENAI_API_KEY` for local dev via `.env`), `OPENAI_MODEL`, `STATE_MACHINE_ARN`. Optional: `PROFILES_ROOT`, `OPENAI_BASE_URL`, `STAGE_NAME`.
+Required at runtime: `DOCUMENTS_BUCKET_NAME`, `OPENAI_API_KEY_SECRET_ARN` (or `OPENAI_API_KEY` for local dev via `.env`), `OPENAI_MODEL`, `STATE_MACHINE_ARN` (set on `SubmitExtractionFunction` and `GetExtractionStatusFunction`). Optional: `PROFILES_ROOT`, `OPENAI_BASE_URL`, `STAGE_NAME`.
 
 PDF extraction toggles: `ENABLE_TEXTRACT` (default `true`), `ENABLE_VISION_FALLBACK` (default `false`), `TEXTRACT_REGION` (required if deploying to a region without Textract, e.g. `sa-east-1`), `OPENAI_VISION_MODEL` (default `gpt-4o`).
